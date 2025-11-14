@@ -200,36 +200,63 @@ export function getTerrainInfo(terrain) {
 
 /**
  * Get recommended terrain for a region based on map analysis
- * This is a helper for bulk assignment
+ * Updated to match the actual circled terrain types from the map
  */
 export function getTerrainFromMapPosition(code) {
-  // Based on your map image analysis
-  const row = code[0];
-  const num = parseInt(code.slice(1));
+  // Based on the actual map with terrain circles:
+  // Red = Mountains, Green = Forest, Blue = Coast, Purple = River, Black = Hills
   
-  // Coastal regions (bottom of map)
-  if (row === 'G' && num >= 5 && num <= 8) return TERRAIN_TYPES.COAST;
-  if (row === 'H' || row === 'I') return TERRAIN_TYPES.COAST;
+  // Coast (Blue outline - southern coastal regions)
+  const coastRegions = [
+    'F8', 'F12', 'F13',
+    'G4', 'G5', 'G6', 'G7', 'G8',
+    'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+    'I1'
+  ];
+  if (coastRegions.includes(code)) return TERRAIN_TYPES.COAST;
   
-  // Mountain regions (scattered throughout)
-  const mountainRegions = ['A7', 'B7', 'B8', 'C6', 'C7', 'C13', 'D6', 'D16', 'E4', 'E5', 'E6', 'E14', 'F4'];
+  // River (Purple circles)
+  const riverRegions = [
+    'A4', 'A5', 'A6',
+    'B4', 'B5', 'B14',
+    'C3', 'C4',
+    'D2', 'D3', 'D4', 'D12',
+    'E2', 'E11',
+    'F2',
+    'G1'
+  ];
+  if (riverRegions.includes(code)) return TERRAIN_TYPES.RIVER;
+  
+  // Mountains (Red circles)
+  const mountainRegions = [
+    'B7', 'B8', 'B9',
+    'C8', 'C9', 'C10', 'C13', 'C14',
+    'D6', 'D10', 'D15', 'D16',
+    'E4', 'E5', 'E14', 'E15',
+    'F4'
+  ];
   if (mountainRegions.includes(code)) return TERRAIN_TYPES.MOUNTAINS;
   
-  // Forest regions (visible as dark green clusters)
+  // Forest (Green boxes/circles)
   const forestRegions = [
-    'A10', 'A11', 'A12', 'A14', 'A15',
-    'B2', 'B11', 'B15',
-    'C2', 'C11',
-    'D1', 'D9', 'D10', 'D15',
-    'E1', 'E8', 'E10',
+    'A10', 'A11', 'A12', 'A13', 'A14', 'A15',
+    'B10', 'B11', 'B15', 'B16',
+    'C1', 'C2', 'C11', 'C12',
+    'D8', 'D9', 'D14',
+    'E1', 'E8', 'E9', 'E13',
     'F14'
   ];
   if (forestRegions.includes(code)) return TERRAIN_TYPES.FOREST;
   
-  // River regions (blue lines on map)
-  const riverRegions = ['A4', 'A5', 'B5', 'B16', 'C3', 'C4', 'D4', 'D8', 'D13', 'E12', 'F2', 'F12', 'G2'];
-  if (riverRegions.includes(code)) return TERRAIN_TYPES.RIVER;
+  // Hills (Black circles)
+  const hillsRegions = [
+    'C6', 'C7',
+    'D7',
+    'F3', 'F5',
+    'G2'
+  ];
+  if (hillsRegions.includes(code)) return TERRAIN_TYPES.HILLS;
   
-  // Everything else is plains
+  // Everything else is plains (uncircled regions)
   return TERRAIN_TYPES.PLAINS;
 }
