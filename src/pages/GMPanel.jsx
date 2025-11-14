@@ -235,7 +235,12 @@ export default function GMPanel() {
       <h2>All Regions</h2>
       {regions.map((region) => (
         <div key={region.id} className="card">
-          <RegionCard region={region} />
+          <RegionCard 
+            region={region} 
+            role="gm"
+            eco={null}
+            myFactionId={null}
+          />
           <div style={{ marginTop: "8px" }}>
             <label>Transfer to faction: </label>
             <select

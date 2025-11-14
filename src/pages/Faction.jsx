@@ -285,6 +285,24 @@ export default function Faction() {
   const isOwnerView = role === "faction" && myFactionId === Number(id);
   const canEditAgents = isOwnerView || role === "gm";
 
+  /* -------------------------------------------------------
+     FIX #1: FACTION PRIVACY CHECK
+     Prevent faction players from viewing other factions' data
+  -------------------------------------------------------- */
+  if (role === "faction" && myFactionId !== null && myFactionId !== Number(id)) {
+    return (
+      <div className="container">
+        <h1>Access Denied</h1>
+        <p style={{ color: "#c7bca5", marginBottom: 20 }}>
+          You cannot view other factions' information.
+        </p>
+        <button onClick={() => navigate(`/faction/${myFactionId}`)}>
+          Return to Your Faction
+        </button>
+      </div>
+    );
+  }
+
   /* ---------------- REGIONS ---------------- */
 
   useEffect(() => {
@@ -381,11 +399,44 @@ export default function Faction() {
     await updateDoc(ref, { [field]: next });
   }
 
+  /* -------------------------------------------------------
+     FIX #2: LEVY LIMITS ENFORCEMENT
+     Prevent raising more levy units than potential allows
+  -------------------------------------------------------- */
   async function changeArmyLevy(armyId, field, delta) {
     if (!isOwnerView) return;
+    
     const army = armies.find((a) => a.id === armyId);
     const current = army[field] || 0;
     const next = Math.max(0, current + delta);
+    
+    // Calculate what the new total would be after this change
+    const newTotalInf = totalLevyInfantryUnits + (field === "levyInfantry" ? (next - current) : 0);
+    const newTotalArch = totalLevyArcherUnits + (field === "levyArchers" ? (next - current) : 0);
+    
+    // Check if we're exceeding levy infantry potential
+    if (field === "levyInfantry" && newTotalInf > levyInfPotentialUnits) {
+      window.alert(
+        `Cannot raise more levy infantry.\n\n` +
+        `Current: ${totalLevyInfantryUnits} / ${levyInfPotentialUnits} units\n` +
+        `Attempted: ${newTotalInf} units\n\n` +
+        `Build more settlements (Villages, Towns, Cities) to increase your levy potential.`
+      );
+      return;
+    }
+    
+    // Check if we're exceeding levy archer potential
+    if (field === "levyArchers" && newTotalArch > levyArchPotentialUnits) {
+      window.alert(
+        `Cannot raise more levy archers.\n\n` +
+        `Current: ${totalLevyArcherUnits} / ${levyArchPotentialUnits} units\n` +
+        `Attempted: ${newTotalArch} units\n\n` +
+        `Build more Farms to increase your levy archer potential.`
+      );
+      return;
+    }
+    
+    // If we passed the checks, proceed with the update
     const ref = doc(db, "factions", String(id), "armies", armyId);
     await updateDoc(ref, { [field]: next });
   }
