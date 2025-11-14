@@ -1,0 +1,599 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Georgia", "Times New Roman", serif;
+  background: radial-gradient(circle at top, #1b130d 0, #0b0907 40%, #050304 100%);
+  color: #f4efe4;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Generic button style – looks like metal/wooden tabs */
+button {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #3b342d 0%, #29221c 85%);
+  color: #f4efe4;
+  border: 1px solid #6b5a3a;
+  cursor: pointer;
+  margin: 6px;
+  font-family: "Georgia", serif;
+  font-size: 14px;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  /* Better mobile touch */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  min-height: 44px; /* iOS minimum touch target */
+}
+
+button:hover {
+  background: linear-gradient(180deg, #4a4037 0%, #332a23 85%);
+  border-color: #c5a769;
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Container = big ledger panel */
+.container {
+  padding: 20px;
+  max-width: 1100px;
+  margin: 20px auto 40px;
+  background: radial-gradient(circle at top left, #231812 0, #17110c 40%, #0b0907 100%);
+  border-radius: 18px;
+  border: 1px solid #4e3b26;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.7);
+}
+
+/* Mobile: reduce padding and margins */
+@media (max-width: 600px) {
+  .container {
+    padding: 12px;
+    margin: 8px;
+    border-radius: 12px;
+  }
+}
+
+/* Region / panel cards = dark wood planks */
+.card {
+  background: #201712;
+  padding: 15px;
+  border-radius: 12px;
+  margin: 12px 0;
+  border: 1px solid #4c3b2a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+/* Mobile: reduce card padding */
+@media (max-width: 600px) {
+  .card {
+    padding: 12px;
+    margin: 8px 0;
+  }
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.tabs::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+/* Mobile: tabs scroll if needed */
+@media (max-width: 600px) {
+  .tabs {
+    gap: 6px;
+    margin-bottom: 12px;
+    padding-bottom: 4px;
+  }
+}
+
+/* Base tab looks like a leather tab */
+.tab {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #5b4630;
+  background: linear-gradient(180deg, #2d231c 0%, #201813 90%);
+  cursor: pointer;
+  font-size: 14px;
+  color: #e7dfd2;
+  font-family: "Georgia", serif;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.tab:hover {
+  background: linear-gradient(180deg, #3a2d24 0%, #251b15 90%);
+  border-color: #c5a769;
+  transform: translateY(-1px);
+}
+
+.tab:active {
+  transform: translateY(0);
+}
+
+/* Active tab – royal blue & gold */
+.tab.active {
+  background: linear-gradient(180deg, #30425d 0%, #222d3f 90%);
+  border-color: #d1b26b;
+  color: #f9f4e6;
+}
+
+/* Mobile: slightly larger tap targets */
+@media (max-width: 600px) {
+  .tab {
+    padding: 10px 16px;
+    font-size: 15px;
+  }
+}
+
+/* Summary cards (top econ panels) */
+.summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.summary-card {
+  flex: 1 1 230px;
+  background: #241a14;
+  border-radius: 12px;
+  border: 1px solid #5e4934;
+  padding: 12px 14px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.6);
+}
+
+/* Mobile: stack summary cards */
+@media (max-width: 600px) {
+  .summary-row {
+    gap: 8px;
+  }
+  
+  .summary-card {
+    flex: 1 1 100%;
+    padding: 10px 12px;
+  }
+}
+
+.summary-card h3 {
+  margin-top: 0;
+  margin-bottom: 6px;
+  font-size: 16px;
+  font-family: "Cinzel", "Georgia", serif;
+  letter-spacing: 0.5px;
+}
+
+.summary-card p {
+  font-size: 14px;
+  margin: 6px 0;
+}
+
+/* Mobile: slightly smaller text in summary cards */
+@media (max-width: 600px) {
+  .summary-card h3 {
+    font-size: 15px;
+  }
+  
+  .summary-card p {
+    font-size: 13px;
+    margin: 4px 0;
+  }
+}
+
+/* Helpful classes if you want red/green numbers */
+.summary-card .warning {
+  color: #f97373;
+  font-weight: bold;
+}
+
+.summary-card .ok {
+  color: #b5e8a1;
+  font-weight: bold;
+}
+
+/* Army/Navy grid */
+.army-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+/* Mobile: smaller minimum for army grid */
+@media (max-width: 600px) {
+  .army-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+.army-item {
+  background: #241b15;
+  border-radius: 10px;
+  border: 1px solid #5e4934;
+  padding: 10px 12px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.55);
+}
+
+.army-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 14px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.army-item-header span:last-child {
+  color: #c7bca5;
+  font-size: 12px;
+}
+
+.army-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.army-count {
+  min-width: 36px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 15px;
+}
+
+/* Mobile: larger touch targets for army controls */
+@media (max-width: 600px) {
+  .army-controls button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 12px;
+  }
+  
+  .army-count {
+    min-width: 44px;
+    font-size: 16px;
+  }
+}
+
+/* Optional: smaller "pill" buttons inside region cards can reuse this */
+button.small {
+  padding: 4px 10px;
+  font-size: 12px;
+  margin: 3px;
+  min-height: 32px;
+}
+
+/* Mobile: make small buttons more tappable */
+@media (max-width: 600px) {
+  button.small {
+    padding: 8px 12px;
+    font-size: 13px;
+    min-height: 40px;
+  }
+}
+
+/* Green button variant */
+button.green {
+  background: linear-gradient(180deg, #4a6642 0%, #35502f 85%);
+  border-color: #5a7a52;
+}
+
+button.green:hover {
+  background: linear-gradient(180deg, #567750 0%, #3d5936 85%);
+  border-color: #7a9a72;
+}
+
+/* Input fields - prevent zoom on iOS */
+input,
+select,
+textarea {
+  font-size: 16px; /* Prevents iOS zoom */
+  font-family: "Georgia", serif;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #1d1610;
+  border: 1px solid #5e4934;
+  color: #f4efe4;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Mobile: larger input fields */
+@media (max-width: 600px) {
+  input[type="text"],
+  input[type="number"],
+  select,
+  textarea {
+    padding: 10px 14px;
+    min-height: 44px;
+  }
+}
+
+/* Hire Agent form layout: Type | Name (stretch) | Location | Button */
+.agent-hire-form {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.agent-hire-form label {
+  font-size: 14px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-hire-form label span {
+  flex-shrink: 0;
+}
+
+.agent-hire-form input,
+.agent-hire-form select {
+  flex: 1;
+}
+
+.agent-hire-form button {
+  white-space: nowrap;
+}
+
+/* Mobile: stack hire form vertically */
+@media (max-width: 768px) {
+  .agent-hire-form {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+  
+  .agent-hire-form label {
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    gap: 6px;
+    white-space: normal;
+  }
+  
+  .agent-hire-form label span {
+    font-weight: bold;
+  }
+  
+  .agent-hire-form input,
+  .agent-hire-form select {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  
+  .agent-hire-form button {
+    width: 100%;
+  }
+}
+
+/* Hire Agent row layout (legacy - keeping for compatibility) */
+.hire-agent-form {
+  margin-top: 8px;
+}
+
+.hire-agent-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.hire-agent-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+}
+
+.hire-agent-label span {
+  margin-bottom: 3px;
+}
+
+.hire-agent-label--wide {
+  flex: 1 1 260px;
+}
+
+.hire-agent-label--home {
+  min-width: 220px;
+}
+
+/* Mobile: full width labels */
+@media (max-width: 600px) {
+  .hire-agent-label--wide,
+  .hire-agent-label--home {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+}
+
+.hire-agent-input {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #5e4934;
+  background: #1d1610;
+  color: #f3eadc;
+  font-family: "Georgia", serif;
+}
+
+.hire-agent-select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #5e4934;
+  background: #241b15;
+  color: #f4efe4;
+  font-family: "Georgia", serif;
+  font-size: 13px;
+}
+
+/* Toast notifications */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 400px;
+}
+
+/* Mobile: full width toasts */
+@media (max-width: 600px) {
+  .toast-container {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+}
+
+.toast {
+  background: #2d2318;
+  border: 1px solid #6b5a3a;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast-title {
+  font-weight: bold;
+  margin-bottom: 6px;
+  color: #f9f4e6;
+  font-size: 15px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1b130d;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4e3b26;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6b5a3a;
+}
+
+/* Mobile: hide scrollbars on small screens */
+@media (max-width: 600px) {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+}
+
+/* Utility classes */
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .mobile-only {
+    display: block;
+  }
+  
+  .desktop-only {
+    display: none;
+  }
+}
+
+/* Better text selection */
+::selection {
+  background: #6b5a3a;
+  color: #f9f4e6;
+}
+
+::-moz-selection {
+  background: #6b5a3a;
+  color: #f9f4e6;
+}
+
+/* Prevent text size adjustment on orientation change */
+html {
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+}
+
+/* Region card mobile optimizations */
+.region-expanded-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr);
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .region-expanded-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.region-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  .region-header-row {
+    gap: 8px;
+  }
+}
