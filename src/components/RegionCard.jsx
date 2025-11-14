@@ -8,16 +8,26 @@ const SETTLEMENTS = ["Village", "Town", "City"];
 export default function RegionCard({ region, eco, role, myFactionId }) {
   const [expanded, setExpanded] = useState(false);
   const [notes, setNotes] = useState(region.notes || "");
+  const [regionName, setRegionName] = useState(region.name || "");
+  const [isEditingName, setIsEditingName] = useState(false);
 
   useEffect(() => {
     setNotes(region.notes || "");
   }, [region.notes]);
+
+  useEffect(() => {
+    setRegionName(region.name || "");
+  }, [region.name]);
 
   const upgrades = region.upgrades || [];
   const disabledUpgrades = region.disabledUpgrades || [];
 
   const isGM = role === "gm";
   const isOwner = role === "faction" && myFactionId === region.owner;
+
+  // ----- terrain info -----
+  const terrain = region.terrain || TERRAIN_TYPES.PLAINS;
+  const terrainInfo = getTerrainInfo(terrain);
 
   // ----- generic helpers -----
   const count = (name) => upgrades.filter((u) => u === name).length;
@@ -72,6 +82,13 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
       return;
     }
 
+    // Check terrain restrictions for settlements
+    const check = canAddBuilding(terrain, type, upgrades);
+    if (!check.allowed) {
+      window.alert(check.reason);
+      return;
+    }
+
     if (type === "Village") {
       if (current !== "None") {
         window.alert("Only one settlement per region.");
@@ -118,7 +135,6 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
     if (!isOwner) return;
     
     // Check terrain restrictions
-    const terrain = region.terrain || TERRAIN_TYPES.PLAINS;
     const check = canAddBuilding(terrain, "Farm", upgrades);
     if (!check.allowed) {
       window.alert(check.reason);
@@ -157,7 +173,6 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
     if (!isOwner) return;
     
     // Check terrain restrictions
-    const terrain = region.terrain || TERRAIN_TYPES.PLAINS;
     const check = canAddBuilding(terrain, "Farm2", upgrades);
     if (!check.allowed) {
       window.alert(check.reason);
@@ -203,6 +218,14 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
   // ----- mines -----
   async function addMine() {
     if (!isOwner) return;
+    
+    // Check terrain restrictions
+    const check = canAddBuilding(terrain, "Mine", upgrades);
+    if (!check.allowed) {
+      window.alert(check.reason);
+      return;
+    }
+    
     const mineGroup = countGroup(["Mine", "Mine2"]);
     if (mineGroup >= 3) {
       window.alert("Max 3 mines (including Mine2) per region.");
@@ -233,6 +256,14 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
 
   async function addMine2() {
     if (!isOwner) return;
+    
+    // Check terrain restrictions
+    const check = canAddBuilding(terrain, "Mine2", upgrades);
+    if (!check.allowed) {
+      window.alert(check.reason);
+      return;
+    }
+    
     const mineGroup = countGroup(["Mine", "Mine2"]);
     let newUps = [...upgrades];
 
@@ -275,6 +306,16 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
 
   async function toggleKeep() {
     if (!isOwner) return;
+    
+    // Check terrain restrictions
+    if (!hasKeep) {
+      const check = canAddBuilding(terrain, "Keep", upgrades);
+      if (!check.allowed) {
+        window.alert(check.reason);
+        return;
+      }
+    }
+    
     let newUps = [...upgrades];
     let newDisabled = [...disabledUpgrades];
 
@@ -299,6 +340,15 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
     if (!hasKeep) {
       window.alert("You must have a Keep to upgrade to Castle.");
       return;
+    }
+
+    // Check terrain restrictions
+    if (!hasCastle) {
+      const check = canAddBuilding(terrain, "Castle", upgrades);
+      if (!check.allowed) {
+        window.alert(check.reason);
+        return;
+      }
     }
 
     if (hasCastle) {
@@ -329,6 +379,12 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
   async function saveNotes() {
     if (!isOwner) return;
     await updateRegionFields({ notes });
+  }
+
+  async function saveRegionName() {
+    if (!isGM) return;
+    await updateRegionFields({ name: regionName });
+    setIsEditingName(false);
   }
 
   async function deleteRegion() {
@@ -395,7 +451,123 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
         onClick={() => setExpanded((e) => !e)}
       >
         <div style={{ flex: "1 1 auto", minWidth: "200px" }}>
-          <h2 style={{ marginBottom: "4px" }}>{region.name}</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
+            {/* Region Code Badge */}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "4px 10px",
+                borderRadius: "6px",
+                fontSize: "15px",
+                fontWeight: 700,
+                backgroundColor: "#30425d",
+                border: "1.5px solid #4a5d7a",
+                color: "#f8f4e6",
+              }}
+            >
+              {region.code || region.name}
+            </span>
+            
+            {/* Editable Region Name */}
+            {isGM ? (
+              isEditingName ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="text"
+                    value={regionName}
+                    onChange={(e) => setRegionName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveRegionName();
+                      if (e.key === 'Escape') {
+                        setRegionName(region.name || "");
+                        setIsEditingName(false);
+                      }
+                    }}
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      border: "1px solid #555",
+                      background: "#1d1610",
+                      color: "#f8f4e6",
+                      fontSize: "15px",
+                      fontWeight: 600,
+                      minWidth: "150px",
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    onClick={saveRegionName}
+                    className="small"
+                    style={{
+                      padding: "4px 8px",
+                      fontSize: "12px",
+                      background: "#0066cc",
+                      borderColor: "#004d99",
+                    }}
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setRegionName(region.name || "");
+                      setIsEditingName(false);
+                    }}
+                    className="small"
+                    style={{
+                      padding: "4px 8px",
+                      fontSize: "12px",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <h2 
+                  style={{ 
+                    margin: 0, 
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsEditingName(true);
+                  }}
+                  title="Click to edit name"
+                >
+                  {regionName || "(unnamed)"}
+                  <span style={{ fontSize: "14px", color: "#888" }}>✎</span>
+                </h2>
+              )
+            ) : (
+              <h2 style={{ margin: 0 }}>
+                {regionName || "(unnamed)"}
+              </h2>
+            )}
+            
+            {/* Terrain Badge */}
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "4px 10px",
+                borderRadius: "6px",
+                fontSize: "13px",
+                fontWeight: 600,
+                backgroundColor: terrainInfo.color + "33",
+                border: `1.5px solid ${terrainInfo.color}`,
+                color: "#f8f4e6",
+              }}
+              title={terrainInfo.description}
+            >
+              <span style={{ fontSize: "16px" }}>{terrainInfo.icon}</span>
+              <span>{terrainInfo.name}</span>
+            </span>
+          </div>
           <p style={{ margin: 0 }}>
             <strong>Owner:</strong> Faction {region.owner} •{" "}
             <strong>Settlement:</strong> {settlement}
@@ -441,8 +613,69 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
           className="region-expanded-grid"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* LEFT COLUMN: settlement + forts + notes (+ GM controls) */}
+          {/* LEFT COLUMN: terrain info + settlement + forts + notes (+ GM controls) */}
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {/* Terrain Info Section */}
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: "10px",
+                border: `2px solid ${terrainInfo.color}`,
+                background: terrainInfo.color + "11",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                <span style={{ fontSize: "20px" }}>{terrainInfo.icon}</span>
+                <strong style={{ fontSize: "15px" }}>{terrainInfo.name}</strong>
+              </div>
+              <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#ccc", fontStyle: "italic" }}>
+                {terrainInfo.description}
+              </p>
+              
+              {/* Building Limits */}
+              <div style={{ fontSize: "12px", color: "#ddd" }}>
+                <div style={{ marginBottom: "4px" }}>
+                  <strong>Building Limits:</strong>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 8px", paddingLeft: "8px" }}>
+                  <span>Farms:</span>
+                  <span>{terrainInfo.maxFarms}</span>
+                  <span>Mines:</span>
+                  <span>{terrainInfo.maxMines}</span>
+                  <span>Settlements:</span>
+                  <span>{terrainInfo.allowedSettlements ? terrainInfo.allowedSettlements.join(", ") : "Any"}</span>
+                  <span>Keep:</span>
+                  <span>{terrainInfo.canHaveKeep ? "✓" : "✗"}</span>
+                  <span>Castle:</span>
+                  <span>{terrainInfo.canHaveCastle ? "✓" : "✗"}</span>
+                </div>
+              </div>
+
+              {/* Bonuses */}
+              {terrainInfo.bonuses && terrainInfo.bonuses.length > 0 && (
+                <div style={{ marginTop: "8px", fontSize: "12px" }}>
+                  <strong style={{ color: "#6ba368" }}>Bonuses:</strong>
+                  <ul style={{ margin: "2px 0 0", paddingLeft: "18px", color: "#ccc" }}>
+                    {terrainInfo.bonuses.map((bonus, i) => (
+                      <li key={i}>{bonus}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Penalties */}
+              {terrainInfo.penalties && terrainInfo.penalties.length > 0 && (
+                <div style={{ marginTop: "6px", fontSize: "12px" }}>
+                  <strong style={{ color: "#f97373" }}>Penalties:</strong>
+                  <ul style={{ margin: "2px 0 0", paddingLeft: "18px", color: "#ccc" }}>
+                    {terrainInfo.penalties.map((penalty, i) => (
+                      <li key={i}>{penalty}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
             {isGM && (
               <div
                 style={{
@@ -691,7 +924,7 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
                   fontWeight: 600,
                 }}
               >
-                Farms (max 3 per region including Farm2)
+                Farms (max {terrainInfo.maxFarms} in {terrainInfo.name})
               </h4>
               <p style={{ margin: "0 0 2px", fontSize: "13px" }}>
                 Farm:{" "}
@@ -757,7 +990,7 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
                   fontWeight: 600,
                 }}
               >
-                Mines (max 3 per region including Mine2)
+                Mines (max {terrainInfo.maxMines} in {terrainInfo.name})
               </h4>
               <p style={{ margin: "0 0 2px", fontSize: "13px" }}>
                 Mine:{" "}

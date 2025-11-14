@@ -271,7 +271,6 @@ export default function Faction() {
   const [agents, setAgents] = useState([]);
   const [newAgentType, setNewAgentType] = useState("spy");
   const [newAgentName, setNewAgentName] = useState("");
-  const [newAgentRegionId, setNewAgentRegionId] = useState("");
 
   const [role, setRole] = useState(null);
   const [myFactionId, setMyFactionId] = useState(null);
@@ -511,29 +510,17 @@ export default function Faction() {
         ? "Unnamed Agitator"
         : "Unnamed Enforcer");
 
-    const region =
-      newAgentRegionId &&
-      allRegions.find((r) => String(r.id) === String(newAgentRegionId));
-
-    if (!region) {
-      show("Choose a Location", "Select a region for this agent to start in.");
-      return;
-    }
-
     const agentsRef = collection(db, "agents");
     await addDoc(agentsRef, {
       factionId: Number(id),
       name,
       type,
       level: 1,
-      homeRegionId: region.id,
-      homeRegionName: region.name || region.id,
     });
 
-    show("Agent Hired", `${name} (${type}) hired in ${region.name || region.id}.`);
+    show("Agent Hired", `${name} (${type}) hired.`);
 
     setNewAgentName("");
-    setNewAgentRegionId("");
   }
 
   async function handleDeleteAgent(agentId) {
@@ -550,19 +537,6 @@ export default function Faction() {
     const level = Math.max(1, Math.min(10, Number(newLevel)));
     const ref = doc(db, "agents", agentId);
     await updateDoc(ref, { level });
-  }
-
-  async function handleAgentLocationChange(agentId, newRegionId) {
-    if (!canEditAgents) return;
-    const region =
-      newRegionId &&
-      allRegions.find((r) => String(r.id) === String(newRegionId));
-    
-    const ref = doc(db, "agents", agentId);
-    await updateDoc(ref, {
-      homeRegionId: region ? region.id : null,
-      homeRegionName: region ? region.name || region.id : null,
-    });
   }
 
   /* ---------------- RENDER HELPERS ---------------- */
@@ -615,85 +589,53 @@ export default function Faction() {
           <div
             style={{
               display: "flex",
-              flexDirection: "column",
+              alignItems: "center",
               gap: 10,
+              flexWrap: "wrap",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span
+            <span
+              style={{
+                padding: "3px 10px",
+                borderRadius: 999,
+                border: "1px solid #4c3b2a",
+                background: typeColor,
+                color: "#f8f4e8",
+                fontFamily: "Georgia, serif",
+                fontSize: 13,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {typeLabel}
+            </span>
+
+            <span style={{ color: "#c7bca5", display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}>
+              Level
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={agent.level || 1}
+                onChange={(e) =>
+                  handleAgentLevelChange(agent.id, e.target.value)
+                }
+                disabled={!canEditAgents}
                 style={{
-                  padding: "3px 10px",
-                  borderRadius: 999,
-                  border: "1px solid #4c3b2a",
-                  background: typeColor,
-                  color: "#f8f4e8",
+                  width: 50,
+                  padding: "4px 8px",
+                  borderRadius: 4,
+                  border: "1px solid #5e4934",
+                  background: canEditAgents ? "#1d1610" : "#2a2218",
+                  color: "#f3eadc",
                   fontFamily: "Georgia, serif",
-                  fontSize: 13,
-                  whiteSpace: "nowrap",
+                  fontSize: 14,
                 }}
-              >
-                {typeLabel}
-              </span>
+              />
+            </span>
 
-              <span style={{ color: "#c7bca5", display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}>
-                Level
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={agent.level || 1}
-                  onChange={(e) =>
-                    handleAgentLevelChange(agent.id, e.target.value)
-                  }
-                  disabled={!canEditAgents}
-                  style={{
-                    width: 50,
-                    padding: "4px 8px",
-                    borderRadius: 4,
-                    border: "1px solid #5e4934",
-                    background: canEditAgents ? "#1d1610" : "#2a2218",
-                    color: "#f3eadc",
-                    fontFamily: "Georgia, serif",
-                    fontSize: 14,
-                  }}
-                />
-              </span>
-
-              <span style={{ color: "#a89a7a", fontSize: 12, whiteSpace: "nowrap" }}>
-                Upkeep: {AGENT_UPKEEP[agent.type] || 0}g/turn
-              </span>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <label style={{ color: "#d4c7aa", fontSize: 13, display: "flex", alignItems: "center", gap: 6, flex: "1 1 auto", minWidth: 200 }}>
-                Location:
-                <select
-                  value={agent.homeRegionId || ""}
-                  onChange={(e) =>
-                    handleAgentLocationChange(agent.id, e.target.value)
-                  }
-                  disabled={!canEditAgents}
-                  style={{
-                    flex: 1,
-                    padding: "6px 10px",
-                    borderRadius: 4,
-                    border: "1px solid #5e4934",
-                    background: canEditAgents ? "#241b15" : "#2a2218",
-                    color: "#f4efe4",
-                    fontFamily: "Georgia, serif",
-                    fontSize: 13,
-                    minHeight: 36,
-                  }}
-                >
-                  <option value="">Unassigned</option>
-                  {allRegions.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name || r.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            <span style={{ color: "#a89a7a", fontSize: 12, whiteSpace: "nowrap" }}>
+              Upkeep: {AGENT_UPKEEP[agent.type] || 0}g/turn
+            </span>
           </div>
         </div>
       </div>
@@ -782,31 +724,6 @@ export default function Faction() {
                     fontSize: 16,
                   }}
                 />
-              </label>
-
-              <label style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
-                <span>Location:</span>
-                <select
-                  value={newAgentRegionId}
-                  onChange={(e) => setNewAgentRegionId(e.target.value)}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 6,
-                    border: "1px solid #5e4934",
-                    background: "#241b15",
-                    color: "#f4efe4",
-                    fontFamily: "Georgia, serif",
-                    fontSize: 14,
-                    minWidth: 140,
-                  }}
-                >
-                  <option value="">Select region…</option>
-                  {allRegions.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name || r.id}
-                    </option>
-                  ))}
-                </select>
               </label>
 
               <button type="submit" disabled={agentsCount >= maxAgents} style={{ margin: 0 }}>
