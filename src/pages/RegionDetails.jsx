@@ -265,7 +265,7 @@ export default function RegionDetails() {
   }
 
   const isGM = role === "gm";
-  const isOwner = role === "faction" && myFactionId === region.owner;
+  const isOwner = (role === "faction" && myFactionId === region.owner) || isGM;
 
   async function updateRegionFields(fields) {
     await updateDoc(doc(db, "regions", regionId), fields);

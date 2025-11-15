@@ -11,10 +11,10 @@ import {
   setDoc,
   updateDoc,
   addDoc,
-  deleteDoc,
 } from "firebase/firestore";
 import RegionCard from "../components/RegionCard";
 import ArmyCard from "../components/ArmyCard";
+import { getAuthState } from "../utils/auth";
 
 /* -------------------------------------------------------
    TOAST SYSTEM
@@ -136,9 +136,6 @@ const AGENT_UPKEEP = {
   enforcer: 2,
 };
 
-/**
- * Major economy calculator WITH UNREST EFFECTS
- */
 function calculateEconomy(regions) {
   let goldTotal = 0;
   let manpowerProdTotal = 0;
@@ -165,7 +162,6 @@ function calculateEconomy(regions) {
       if (counts[d]) counts[d] -= 1;
     });
 
-    // Per-region tallies before unrest
     let regionGold = 0;
     let regionManProd = 0;
     let regionManCost = 0;
@@ -275,33 +271,32 @@ export default function Faction() {
   const [role, setRole] = useState(null);
   const [myFactionId, setMyFactionId] = useState(null);
 
+  // Authorization check
   useEffect(() => {
-    const r = localStorage.getItem("role");
-    const f = localStorage.getItem("factionId");
-    if (r) setRole(r);
-    if (f) setMyFactionId(Number(f));
-  }, []);
+    const auth = getAuthState();
+    
+    if (!auth) {
+      navigate("/");
+      return;
+    }
 
-  const isOwnerView = role === "faction" && myFactionId === Number(id);
-  const canEditAgents = isOwnerView || role === "gm";
+    setRole(auth.role);
+    setMyFactionId(auth.factionId);
 
-  /* -------------------------------------------------------
-     FIX #1: FACTION PRIVACY CHECK
-     Prevent faction players from viewing other factions' data
-  -------------------------------------------------------- */
-  if (role === "faction" && myFactionId !== null && myFactionId !== Number(id)) {
-    return (
-      <div className="container">
-        <h1>Access Denied</h1>
-        <p style={{ color: "#c7bca5", marginBottom: 20 }}>
-          You cannot view other factions' information.
-        </p>
-        <button onClick={() => navigate(`/faction/${myFactionId}`)}>
-          Return to Your Faction
-        </button>
-      </div>
-    );
-  }
+    // GM can view any faction
+    if (auth.role === "gm") {
+      return;
+    }
+
+    // Faction players can only view their own faction
+    if (auth.role === "faction" && auth.factionId !== Number(id)) {
+      navigate(`/faction/${auth.factionId}`);
+    }
+  }, [id, navigate]);
+
+  const isGM = role === "gm";
+  const isOwnerView = (role === "faction" && myFactionId === Number(id)) || isGM;
+  const canEditAgents = isOwnerView || isGM;
 
   /* ---------------- REGIONS ---------------- */
 
@@ -320,7 +315,6 @@ export default function Faction() {
     return () => unsub();
   }, [id]);
 
-  // Get ALL regions for agent location selection
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "regions"), (snap) => {
       const list = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -399,10 +393,6 @@ export default function Faction() {
     await updateDoc(ref, { [field]: next });
   }
 
-  /* -------------------------------------------------------
-     FIX #2: LEVY LIMITS ENFORCEMENT
-     Prevent raising more levy units than potential allows
-  -------------------------------------------------------- */
   async function changeArmyLevy(armyId, field, delta) {
     if (!isOwnerView) return;
     
@@ -410,11 +400,9 @@ export default function Faction() {
     const current = army[field] || 0;
     const next = Math.max(0, current + delta);
     
-    // Calculate what the new total would be after this change
     const newTotalInf = totalLevyInfantryUnits + (field === "levyInfantry" ? (next - current) : 0);
     const newTotalArch = totalLevyArcherUnits + (field === "levyArchers" ? (next - current) : 0);
     
-    // Check if we're exceeding levy infantry potential
     if (field === "levyInfantry" && newTotalInf > levyInfPotentialUnits) {
       window.alert(
         `Cannot raise more levy infantry.\n\n` +
@@ -425,7 +413,6 @@ export default function Faction() {
       return;
     }
     
-    // Check if we're exceeding levy archer potential
     if (field === "levyArchers" && newTotalArch > levyArchPotentialUnits) {
       window.alert(
         `Cannot raise more levy archers.\n\n` +
@@ -436,7 +423,6 @@ export default function Faction() {
       return;
     }
     
-    // If we passed the checks, proceed with the update
     const ref = doc(db, "factions", String(id), "armies", armyId);
     await updateDoc(ref, { [field]: next });
   }
@@ -800,6 +786,15 @@ export default function Faction() {
       ? factionData.name
       : `Faction ${id}`;
 
+  // Don't render until role is set
+  if (!role) {
+    return (
+      <div className="container">
+        <h1>Loading...</h1>
+      </div>
+    );
+  }
+
   /* ---------------- RENDER MAIN ---------------- */
 
   return (
@@ -822,7 +817,7 @@ export default function Faction() {
           <button onClick={() => navigate("/")} style={{ marginBottom: 0 }}>
             ← Home
           </button>
-          {role === "gm" && (
+          {isGM && (
             <button onClick={() => navigate("/gm")} className="small">
               GM Panel
             </button>
@@ -834,11 +829,11 @@ export default function Faction() {
             You are{" "}
             <strong>
               Faction {myFactionId ?? "?"}
-              {isOwnerView ? " (this is you)" : ""}
+              {isOwnerView && !isGM ? " (this is you)" : ""}
             </strong>
           </p>
         )}
-        {role === "gm" && (
+        {isGM && (
           <p style={{ marginTop: 0, marginBottom: 0, color: "#c7bca5", fontSize: 13 }}>
             <strong>GM mode</strong>
           </p>
