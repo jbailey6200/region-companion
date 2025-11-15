@@ -126,7 +126,7 @@ export default function GMPanel() {
     return (
       <div className="container">
         <button onClick={() => navigate("/")} style={{ marginBottom: "10px" }}>
-          ← Home
+          ← Home
         </button>
         <h1>GM Panel</h1>
         <p>You are not in GM mode. Switch to GM on the home screen.</p>
@@ -137,7 +137,7 @@ export default function GMPanel() {
   return (
     <div className="container">
       <button onClick={() => navigate("/")} style={{ marginBottom: "10px" }}>
-        ← Home
+        ← Home
       </button>
 
       <h1>GM Panel</h1>

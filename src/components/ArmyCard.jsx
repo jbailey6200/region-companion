@@ -137,6 +137,7 @@ export default function ArmyCard({
         <div className="army-item">
           <div className="army-item-header">
             <span>Levy Infantry (units of 10)</span>
+            <span>0.25 gold/unit</span>
           </div>
           <div className="army-controls">
             <button
@@ -158,6 +159,7 @@ export default function ArmyCard({
         <div className="army-item">
           <div className="army-item-header">
             <span>Levy Archers (units of 10)</span>
+            <span>0.25 gold/unit</span>
           </div>
           <div className="army-controls">
             <button

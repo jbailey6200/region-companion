@@ -11,6 +11,7 @@ import {
   setDoc,
   updateDoc,
   addDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import RegionCard from "../components/RegionCard";
 import ArmyCard from "../components/ArmyCard";
@@ -815,7 +816,7 @@ export default function Faction() {
       >
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           <button onClick={() => navigate("/")} style={{ marginBottom: 0 }}>
-            ← Home
+            ← Home
           </button>
           {isGM && (
             <button onClick={() => navigate("/gm")} className="small">
@@ -860,7 +861,7 @@ export default function Faction() {
           <p>
             Gold/turn: <strong>{buildingsGold}</strong>
           </p>
-          <p title="If negative, shut off manpower-consuming buildings until ≥ 0.">
+          <p title="If negative, shut off manpower-consuming buildings until â‰¥ 0.">
             Manpower/turn:{" "}
             <strong className={manpowerNegative ? "warning" : "ok"}>
               {manpowerNet}
@@ -910,7 +911,13 @@ export default function Faction() {
             Levy Inf Potential: <strong>{levyInfPotential}</strong>
           </p>
           <p>
+            Levy Inf Raised: <strong>{totalLevyInfantryUnits} units</strong>
+          </p>
+          <p>
             Levy Arch Potential: <strong>{levyArchPotential}</strong>
+          </p>
+          <p>
+            Levy Arch Raised: <strong>{totalLevyArcherUnits} units</strong>
           </p>
         </div>
       </div>
@@ -956,42 +963,8 @@ export default function Faction() {
       {/* Army & Navy tab */}
       {activeTab === "army" && (
         <>
+          {/* Warships */}
           <div className="summary-row">
-            <div className="summary-card">
-              <h3>Levies Potential</h3>
-              <p>
-                Infantry potential:{" "}
-                <strong>
-                  {levyInfPotential} men ({levyInfPotentialUnits} units)
-                </strong>
-              </p>
-              <p>
-                Archer potential:{" "}
-                <strong>
-                  {levyArchPotential} men ({levyArchPotentialUnits} units)
-                </strong>
-              </p>
-              <p style={{ fontSize: 12, color: "#c7bca5" }}>
-                Levies are in units of 10 men. Upkeep is 0.25 gold per unit
-                (rounded).
-              </p>
-            </div>
-
-            <div className="summary-card">
-              <h3>Levies Raised</h3>
-              <p>
-                Infantry units raised:{" "}
-                <strong>{totalLevyInfantryUnits}</strong>
-              </p>
-              <p>
-                Archer units raised: <strong>{totalLevyArcherUnits}</strong>
-              </p>
-              <p>
-                Levy upkeep (rounded): <strong>{levyGoldUpkeep}</strong>{" "}
-                gold/turn
-              </p>
-            </div>
-
             <div className="summary-card">
               <h3>Warships</h3>
               <p>
@@ -1004,8 +977,11 @@ export default function Faction() {
                 </div>
               )}
               <p style={{ marginTop: 6, fontSize: 12, color: "#c7bca5" }}>
-                Each warship costs 3 gold/turn.
+                Upkeep: 3 gold/turn per warship
               </p>
+              <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #4c3b2a" }}>
+                <strong>Total Navy Upkeep:</strong> {navyGoldUpkeep} gold/turn
+              </div>
             </div>
           </div>
 
@@ -1014,7 +990,7 @@ export default function Faction() {
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginTop: 8,
+              marginTop: 16,
               marginBottom: 8,
             }}
           >

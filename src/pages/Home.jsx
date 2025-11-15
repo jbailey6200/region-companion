@@ -142,7 +142,7 @@ export default function Home() {
             onClick={handleBackToSelection}
             style={{ marginBottom: "16px" }}
           >
-            ← Back to Selection
+            ← Back to Selection
           </button>
 
           <h2 style={{ marginTop: 0 }}>

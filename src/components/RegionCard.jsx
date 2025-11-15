@@ -1,3 +1,5 @@
+// RegionCard.jsx - Replace the entire file
+
 import { useState, useEffect } from "react";
 import { db } from "../firebase/config";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
@@ -20,22 +22,17 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
   }, [region.name]);
 
   const upgrades = region.upgrades || [];
-  const disabledUpgrades = region.disabledUpgrades || [];
 
   const isGM = role === "gm";
-  const isOwner = role === "faction" && myFactionId === region.owner;
+  const isOwner = (role === "faction" && myFactionId === region.owner) || isGM;
 
-  // ----- terrain info -----
+  // Terrain info
   const terrain = region.terrain || TERRAIN_TYPES.PLAINS;
   const terrainInfo = getTerrainInfo(terrain);
 
-  // ----- generic helpers -----
+  // Count helpers
   const count = (name) => upgrades.filter((u) => u === name).length;
-  const disabledCount = (name) =>
-    disabledUpgrades.filter((u) => u === name).length;
-  const activeCount = (name) => Math.max(0, count(name) - disabledCount(name));
-  const countGroup = (names) =>
-    upgrades.filter((u) => names.includes(u)).length;
+  const countGroup = (names) => upgrades.filter((u) => names.includes(u)).length;
 
   function getSettlement() {
     if (upgrades.includes("City")) return "City";
@@ -48,29 +45,11 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
     await updateDoc(doc(db, "regions", region.id), fields);
   }
 
-  async function updateUpgrades(newUps, newDisabled) {
-    await updateRegionFields({
-      upgrades: newUps,
-      disabledUpgrades: newDisabled ?? disabledUpgrades,
-    });
+  async function updateUpgrades(newUps) {
+    await updateRegionFields({ upgrades: newUps, disabledUpgrades: [] });
   }
 
-  function normalizeDisabledFor(names, newUps, disabled) {
-    let result = [...disabled];
-    names.forEach((name) => {
-      const total = newUps.filter((u) => u === name).length;
-      let dCount = result.filter((u) => u === name).length;
-      while (dCount > total) {
-        const idx = result.indexOf(name);
-        if (idx === -1) break;
-        result.splice(idx, 1);
-        dCount--;
-      }
-    });
-    return result;
-  }
-
-  // ----- settlement controls -----
+  // Settlement controls
   async function setSettlement(type) {
     if (!isOwner) return;
 
@@ -82,7 +61,6 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
       return;
     }
 
-    // Check terrain restrictions for settlements
     const check = canAddBuilding(terrain, type, upgrades);
     if (!check.allowed) {
       window.alert(check.reason);
@@ -101,27 +79,15 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
         window.alert("Already a City.");
         return;
       }
-      if (!eco) {
-        window.alert("Economy not loaded yet.");
-        return;
-      }
-      if (eco.farmEquivalent < 4 || eco.mineEquivalent < 1) {
-        window.alert(
-          "Requires 4 Farms (eq) and 1 Mine to become a Town (any regions)."
-        );
+      if (!eco || eco.farmEquivalent < 4 || eco.mineEquivalent < 1) {
+        window.alert("Requires 4 Farms (eq) and 1 Mine to become a Town.");
         return;
       }
     }
 
     if (type === "City") {
-      if (!eco) {
-        window.alert("Economy not loaded yet.");
-        return;
-      }
-      if (eco.farmEquivalent < 6 || eco.mineEquivalent < 2) {
-        window.alert(
-          "Requires 6 Farms (eq) and 1 Mine2 (2 mine equivalents) to become a City (any regions)."
-        );
+      if (!eco || eco.farmEquivalent < 6 || eco.mineEquivalent < 2) {
+        window.alert("Requires 6 Farms (eq) and 2 Mine equivalents to become a City.");
         return;
       }
     }
@@ -130,250 +96,130 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
     await updateUpgrades(newUps);
   }
 
-  // ----- farms -----
+  // Farm management
   async function addFarm() {
     if (!isOwner) return;
-    
-    // Check terrain restrictions
     const check = canAddBuilding(terrain, "Farm", upgrades);
     if (!check.allowed) {
       window.alert(check.reason);
       return;
     }
-    
     const farmGroup = countGroup(["Farm", "Farm2"]);
-    if (farmGroup >= 3) {
-      window.alert("Max 3 farms (including Farm2) per region.");
+    if (farmGroup >= terrainInfo.maxFarms) {
+      window.alert(`Max ${terrainInfo.maxFarms} farms in ${terrainInfo.name}.`);
       return;
     }
-    const newUps = [...upgrades, "Farm"];
-    const newDisabled = normalizeDisabledFor(
-      ["Farm", "Farm2"],
-      newUps,
-      disabledUpgrades
-    );
-    await updateUpgrades(newUps, newDisabled);
+    await updateUpgrades([...upgrades, "Farm"]);
+  }
+
+  async function upgradeFarm() {
+    if (!isOwner) return;
+    const farmIdx = upgrades.indexOf("Farm");
+    if (farmIdx === -1) {
+      window.alert("No Farm to upgrade.");
+      return;
+    }
+    const newUps = [...upgrades];
+    newUps[farmIdx] = "Farm2";
+    await updateUpgrades(newUps);
   }
 
   async function removeFarm() {
     if (!isOwner) return;
-    const idx = upgrades.indexOf("Farm");
-    if (idx === -1) return;
-    const newUps = [...upgrades];
-    newUps.splice(idx, 1);
-    const newDisabled = normalizeDisabledFor(
-      ["Farm", "Farm2"],
-      newUps,
-      disabledUpgrades
-    );
-    await updateUpgrades(newUps, newDisabled);
-  }
-
-  async function addFarm2() {
-    if (!isOwner) return;
-    
-    // Check terrain restrictions
-    const check = canAddBuilding(terrain, "Farm2", upgrades);
-    if (!check.allowed) {
-      window.alert(check.reason);
-      return;
-    }
-    
-    const farmGroup = countGroup(["Farm", "Farm2"]);
     let newUps = [...upgrades];
-
-    const farmIdx = newUps.indexOf("Farm");
-    if (farmIdx !== -1) {
-      newUps[farmIdx] = "Farm2";
+    const farm2Idx = newUps.indexOf("Farm2");
+    if (farm2Idx !== -1) {
+      newUps.splice(farm2Idx, 1);
     } else {
-      if (farmGroup >= 3) {
-        window.alert("Max 3 farms (including Farm2) per region.");
-        return;
+      const farmIdx = newUps.indexOf("Farm");
+      if (farmIdx !== -1) {
+        newUps.splice(farmIdx, 1);
       }
-      newUps.push("Farm2");
     }
-
-    const newDisabled = normalizeDisabledFor(
-      ["Farm", "Farm2"],
-      newUps,
-      disabledUpgrades
-    );
-    await updateUpgrades(newUps, newDisabled);
+    await updateUpgrades(newUps);
   }
 
-  async function removeFarm2() {
-    if (!isOwner) return;
-    const idx = upgrades.indexOf("Farm2");
-    if (idx === -1) return;
-    const newUps = [...upgrades];
-    newUps.splice(idx, 1);
-    const newDisabled = normalizeDisabledFor(
-      ["Farm", "Farm2"],
-      newUps,
-      disabledUpgrades
-    );
-    await updateUpgrades(newUps, newDisabled);
-  }
-
-  // ----- mines -----
+  // Mine management
   async function addMine() {
     if (!isOwner) return;
-    
-    // Check terrain restrictions
     const check = canAddBuilding(terrain, "Mine", upgrades);
     if (!check.allowed) {
       window.alert(check.reason);
       return;
     }
-    
     const mineGroup = countGroup(["Mine", "Mine2"]);
-    if (mineGroup >= 3) {
-      window.alert("Max 3 mines (including Mine2) per region.");
+    if (mineGroup >= terrainInfo.maxMines) {
+      window.alert(`Max ${terrainInfo.maxMines} mines in ${terrainInfo.name}.`);
       return;
     }
-    const newUps = [...upgrades, "Mine"];
-    const newDisabled = normalizeDisabledFor(
-      ["Mine", "Mine2"],
-      newUps,
-      disabledUpgrades
-    );
-    await updateUpgrades(newUps, newDisabled);
+    await updateUpgrades([...upgrades, "Mine"]);
+  }
+
+  async function upgradeMine() {
+    if (!isOwner) return;
+    const mineIdx = upgrades.indexOf("Mine");
+    if (mineIdx === -1) {
+      window.alert("No Mine to upgrade.");
+      return;
+    }
+    const newUps = [...upgrades];
+    newUps[mineIdx] = "Mine2";
+    await updateUpgrades(newUps);
   }
 
   async function removeMine() {
     if (!isOwner) return;
-    const idx = upgrades.indexOf("Mine");
-    if (idx === -1) return;
-    const newUps = [...upgrades];
-    newUps.splice(idx, 1);
-    const newDisabled = normalizeDisabledFor(
-      ["Mine", "Mine2"],
-      newUps,
-      disabledUpgrades
-    );
-    await updateUpgrades(newUps, newDisabled);
-  }
-
-  async function addMine2() {
-    if (!isOwner) return;
-    
-    // Check terrain restrictions
-    const check = canAddBuilding(terrain, "Mine2", upgrades);
-    if (!check.allowed) {
-      window.alert(check.reason);
-      return;
-    }
-    
-    const mineGroup = countGroup(["Mine", "Mine2"]);
     let newUps = [...upgrades];
-
-    const mineIdx = newUps.indexOf("Mine");
-    if (mineIdx !== -1) {
-      newUps[mineIdx] = "Mine2";
+    const mine2Idx = newUps.indexOf("Mine2");
+    if (mine2Idx !== -1) {
+      newUps.splice(mine2Idx, 1);
     } else {
-      if (mineGroup >= 3) {
-        window.alert("Max 3 mines (including Mine2) per region.");
-        return;
+      const mineIdx = newUps.indexOf("Mine");
+      if (mineIdx !== -1) {
+        newUps.splice(mineIdx, 1);
       }
-      newUps.push("Mine2");
     }
-
-    const newDisabled = normalizeDisabledFor(
-      ["Mine", "Mine2"],
-      newUps,
-      disabledUpgrades
-    );
-    await updateUpgrades(newUps, newDisabled);
+    await updateUpgrades(newUps);
   }
 
-  async function removeMine2() {
-    if (!isOwner) return;
-    const idx = upgrades.indexOf("Mine2");
-    if (idx === -1) return;
-    const newUps = [...upgrades];
-    newUps.splice(idx, 1);
-    const newDisabled = normalizeDisabledFor(
-      ["Mine", "Mine2"],
-      newUps,
-      disabledUpgrades
-    );
-    await updateUpgrades(newUps, newDisabled);
-  }
-
-  // ----- forts -----
+  // Fortifications
   const hasKeep = upgrades.includes("Keep");
   const hasCastle = upgrades.includes("Castle");
 
   async function toggleKeep() {
     if (!isOwner) return;
-    
-    // Check terrain restrictions
-    if (!hasKeep) {
+    let newUps = [...upgrades];
+    if (hasKeep) {
+      newUps = newUps.filter((u) => u !== "Keep" && u !== "Castle");
+    } else {
       const check = canAddBuilding(terrain, "Keep", upgrades);
       if (!check.allowed) {
         window.alert(check.reason);
         return;
       }
-    }
-    
-    let newUps = [...upgrades];
-    let newDisabled = [...disabledUpgrades];
-
-    if (hasKeep) {
-      newUps = newUps.filter((u) => u !== "Keep" && u !== "Castle");
-      newDisabled = normalizeDisabledFor(
-        ["Keep", "Castle"],
-        newUps,
-        newDisabled
-      );
-    } else {
       newUps.push("Keep");
     }
-    await updateUpgrades(newUps, newDisabled);
+    await updateUpgrades(newUps);
   }
 
-  async function toggleCastle() {
+  async function upgradeToCastle() {
     if (!isOwner) return;
-    let newUps = [...upgrades];
-    let newDisabled = [...disabledUpgrades];
-
     if (!hasKeep) {
-      window.alert("You must have a Keep to upgrade to Castle.");
+      window.alert("Need Keep first.");
       return;
     }
-
-    // Check terrain restrictions
-    if (!hasCastle) {
-      const check = canAddBuilding(terrain, "Castle", upgrades);
-      if (!check.allowed) {
-        window.alert(check.reason);
-        return;
-      }
+    const check = canAddBuilding(terrain, "Castle", upgrades);
+    if (!check.allowed) {
+      window.alert(check.reason);
+      return;
     }
-
-    if (hasCastle) {
-      newUps = newUps.filter((u) => u !== "Castle");
-      newDisabled = normalizeDisabledFor(["Castle"], newUps, newDisabled);
-    } else {
-      newUps.push("Castle");
-    }
-    await updateUpgrades(newUps, newDisabled);
+    await updateUpgrades([...upgrades, "Castle"]);
   }
 
-  async function disableOne(name) {
+  async function removeCastle() {
     if (!isOwner) return;
-    if (activeCount(name) <= 0) return;
-    const newDisabled = [...disabledUpgrades, name];
-    await updateRegionFields({ disabledUpgrades: newDisabled });
-  }
-
-  async function enableOne(name) {
-    if (!isOwner) return;
-    const idx = disabledUpgrades.indexOf(name);
-    if (idx === -1) return;
-    const newDisabled = [...disabledUpgrades];
-    newDisabled.splice(idx, 1);
-    await updateRegionFields({ disabledUpgrades: newDisabled });
+    const newUps = upgrades.filter((u) => u !== "Castle");
+    await updateUpgrades(newUps);
   }
 
   async function saveNotes() {
@@ -382,8 +228,12 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
   }
 
   async function saveRegionName() {
-    if (!isGM) return;
     await updateRegionFields({ name: regionName });
+    setIsEditingName(false);
+  }
+
+  function cancelEditName() {
+    setRegionName(region.name || "");
     setIsEditingName(false);
   }
 
@@ -399,60 +249,41 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
   }
 
   const settlement = getSettlement();
-
-  // counts
   const farmCount = count("Farm");
   const farm2Count = count("Farm2");
   const mineCount = count("Mine");
   const mine2Count = count("Mine2");
 
-  const farmActive = activeCount("Farm");
-  const farm2Active = activeCount("Farm2");
-  const farmDisabled = disabledCount("Farm");
-  const farm2Disabled = disabledCount("Farm2");
+  // Summary for collapsed view
+  const summaryParts = [];
+  if (farmCount) summaryParts.push(`${farmCount} Farm`);
+  if (farm2Count) summaryParts.push(`${farm2Count} Farm2`);
+  if (mineCount) summaryParts.push(`${mineCount} Mine`);
+  if (mine2Count) summaryParts.push(`${mine2Count} Mine2`);
+  if (hasKeep) summaryParts.push("Keep");
+  if (hasCastle) summaryParts.push("Castle");
+  const summaryText = summaryParts.length ? summaryParts.join(" • ") : "No buildings";
 
-  const mineActive = activeCount("Mine");
-  const mine2Active = activeCount("Mine2");
-  const mineDisabled = disabledCount("Mine");
-  const mine2Disabled = disabledCount("Mine2");
-
-  const keepActive = activeCount("Keep");
-  const keepDisabled = disabledCount("Keep");
-  const castleActive = activeCount("Castle");
-  const castleDisabled = disabledCount("Castle");
-
-  // short line under name
-  const summaryBuildings = [
-    farmActive || farm2Active
-      ? `Farms: ${farmActive} / Farm2: ${farm2Active}`
-      : null,
-    mineActive || mine2Active
-      ? `Mines: ${mineActive} / Mine2: ${mine2Active}`
-      : null,
-    keepActive ? `Keep` : null,
-    castleActive ? `Castle` : null,
-  ]
-    .filter(Boolean)
-    .join(" • ");
+  // Settlement prerequisites
+  const canUpgradeToTown = eco && eco.farmEquivalent >= 4 && eco.mineEquivalent >= 1;
+  const canUpgradeToCity = eco && eco.farmEquivalent >= 6 && eco.mineEquivalent >= 2;
 
   return (
     <div className="card" style={{ marginBottom: "12px" }}>
-      {/* header */}
+      {/* Header - always visible */}
       <div
-        className="region-header-row"
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          cursor: "pointer",
           gap: "10px",
           flexWrap: "wrap",
+          cursor: "pointer",
         }}
-        onClick={() => setExpanded((e) => !e)}
+        onClick={() => setExpanded(!expanded)}
       >
         <div style={{ flex: "1 1 auto", minWidth: "200px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
-            {/* Region Code Badge */}
             <span
               style={{
                 display: "inline-flex",
@@ -469,86 +300,74 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
               {region.code || region.name}
             </span>
             
-            {/* Editable Region Name */}
-            {isGM ? (
-              isEditingName ? (
-                <div style={{ display: "flex", alignItems: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="text"
-                    value={regionName}
-                    onChange={(e) => setRegionName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') saveRegionName();
-                      if (e.key === 'Escape') {
-                        setRegionName(region.name || "");
-                        setIsEditingName(false);
-                      }
-                    }}
-                    style={{
-                      padding: "4px 8px",
-                      borderRadius: "4px",
-                      border: "1px solid #555",
-                      background: "#1d1610",
-                      color: "#f8f4e6",
-                      fontSize: "15px",
-                      fontWeight: 600,
-                      minWidth: "150px",
-                    }}
-                    autoFocus
-                  />
-                  <button
-                    onClick={saveRegionName}
-                    className="small"
-                    style={{
-                      padding: "4px 8px",
-                      fontSize: "12px",
-                      background: "#0066cc",
-                      borderColor: "#004d99",
-                    }}
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setRegionName(region.name || "");
-                      setIsEditingName(false);
-                    }}
-                    className="small"
-                    style={{
-                      padding: "4px 8px",
-                      fontSize: "12px",
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <h2 
-                  style={{ 
-                    margin: 0, 
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "4px",
+            {isEditingName ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="text"
+                  value={regionName}
+                  onChange={(e) => setRegionName(e.target.value)}
+                  autoFocus
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: "6px",
+                    border: "1px solid #5e4934",
+                    background: "#1d1610",
+                    color: "#f4efe4",
+                    fontFamily: "Georgia, serif",
+                    fontSize: "16px",
+                    minWidth: "150px",
                   }}
+                />
+                <button
+                  onClick={saveRegionName}
+                  className="small"
+                  style={{
+                    margin: 0,
+                    padding: "4px 10px",
+                    minHeight: "28px",
+                    background: "#4a6642",
+                    borderColor: "#5a7a52",
+                  }}
+                >
+                  ✓
+                </button>
+                <button
+                  onClick={cancelEditName}
+                  className="small"
+                  style={{
+                    margin: 0,
+                    padding: "4px 10px",
+                    minHeight: "28px",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <>
+                <h2 style={{ margin: 0, display: "inline" }}>
+                  {regionName || "(unnamed)"}
+                </h2>
+                <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setIsEditingName(true);
                   }}
-                  title="Click to edit name"
+                  className="small"
+                  style={{
+                    margin: 0,
+                    padding: "4px 8px",
+                    minHeight: "28px",
+                    background: "transparent",
+                    border: "1px solid #5e4934",
+                  }}
+                  title="Edit region name"
                 >
-                  {regionName || "(unnamed)"}
-                  <span style={{ fontSize: "14px", color: "#888" }}>✎</span>
-                </h2>
-              )
-            ) : (
-              <h2 style={{ margin: 0 }}>
-                {regionName || "(unnamed)"}
-              </h2>
+                  ✏️
+                </button>
+              </>
             )}
             
-            {/* Terrain Badge */}
             <span
               style={{
                 display: "inline-flex",
@@ -562,306 +381,195 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
                 border: `1.5px solid ${terrainInfo.color}`,
                 color: "#f8f4e6",
               }}
-              title={terrainInfo.description}
             >
               <span style={{ fontSize: "16px" }}>{terrainInfo.icon}</span>
               <span>{terrainInfo.name}</span>
             </span>
           </div>
-          <p style={{ margin: 0 }}>
-            <strong>Owner:</strong> Faction {region.owner} •{" "}
-            <strong>Settlement:</strong> {settlement}
+          <p style={{ margin: 0, fontSize: "14px" }}>
+            <strong>Owner:</strong> Faction {region.owner} • <strong>Settlement:</strong> {settlement}
           </p>
-          {summaryBuildings && (
-            <p style={{ margin: 0, fontSize: "13px", color: "#aaa" }}>
-              {summaryBuildings}
+          {!expanded && (
+            <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#aaa" }}>
+              {summaryText}
             </p>
           )}
         </div>
-        <button
-          type="button"
-          className="small"
-          style={{
-            padding: "6px 12px",
-            borderRadius: "999px",
-            border: "1px solid #555",
-            background: "#111",
-            color: "white",
-            fontSize: "13px",
-            flexShrink: 0,
-          }}
-        >
-          {expanded ? "Collapse" : "Expand"}
-        </button>
+        
+        {/* Settlement buttons + Expand/Collapse */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+          {isOwner && ["None", "Village", "Town", "City"].map((s) => {
+            const isCurrent = settlement === s;
+            const isDisabled = (s === "Town" && !canUpgradeToTown) || (s === "City" && !canUpgradeToCity);
+            
+            return (
+              <button
+                key={s}
+                onClick={(e) => { e.stopPropagation(); setSettlement(s); }}
+                disabled={isDisabled}
+                className="small"
+                style={{
+                  background: isCurrent ? "#30425d" : undefined,
+                  borderColor: isCurrent ? "#4a5d7a" : undefined,
+                  opacity: isDisabled ? 0.5 : 1,
+                  margin: "0 2px",
+                  padding: "4px 8px",
+                  minHeight: "28px",
+                }}
+              >
+                {s}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            className="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded(!expanded);
+            }}
+            style={{
+              padding: "4px 10px",
+              borderRadius: "999px",
+              margin: "0 0 0 4px",
+              minHeight: "28px",
+            }}
+          >
+            {expanded ? "Collapse" : "Expand"}
+          </button>
+        </div>
       </div>
 
-      {!expanded && (
-        <p style={{ marginTop: "6px", fontSize: "12px", color: "#777" }}>
-          Click to quickly edit settlement, buildings, forts, and notes.
-        </p>
-      )}
-
-      {/* compact expanded grid */}
+      {/* Expanded content */}
       {expanded && (
         <div
-          style={{
-            marginTop: "10px",
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1.4fr)",
-            gap: "12px",
-          }}
-          className="region-expanded-grid"
+          style={{ marginTop: "16px" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* LEFT COLUMN: terrain info + settlement + forts + notes (+ GM controls) */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {/* Terrain Info Section */}
-            <div
-              style={{
-                padding: "10px 12px",
-                borderRadius: "10px",
-                border: `2px solid ${terrainInfo.color}`,
-                background: terrainInfo.color + "11",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-                <span style={{ fontSize: "20px" }}>{terrainInfo.icon}</span>
-                <strong style={{ fontSize: "15px" }}>{terrainInfo.name}</strong>
+          {/* GM Controls */}
+          {isGM && (
+            <div className="card" style={{ marginBottom: "12px", padding: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <strong>GM Controls</strong>
+                <button
+                  onClick={deleteRegion}
+                  className="small"
+                  style={{ background: "#990000", borderColor: "#660000", margin: "0", padding: "4px 10px", minHeight: "28px" }}
+                >
+                  Delete Region
+                </button>
               </div>
-              <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#ccc", fontStyle: "italic" }}>
-                {terrainInfo.description}
-              </p>
-              
-              {/* Building Limits */}
-              <div style={{ fontSize: "12px", color: "#ddd" }}>
-                <div style={{ marginBottom: "4px" }}>
-                  <strong>Building Limits:</strong>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 8px", paddingLeft: "8px" }}>
-                  <span>Farms:</span>
-                  <span>{terrainInfo.maxFarms}</span>
-                  <span>Mines:</span>
-                  <span>{terrainInfo.maxMines}</span>
-                  <span>Settlements:</span>
-                  <span>{terrainInfo.allowedSettlements ? terrainInfo.allowedSettlements.join(", ") : "Any"}</span>
-                  <span>Keep:</span>
-                  <span>{terrainInfo.canHaveKeep ? "✓" : "✗"}</span>
-                  <span>Castle:</span>
-                  <span>{terrainInfo.canHaveCastle ? "✓" : "✗"}</span>
-                </div>
-              </div>
-
-              {/* Bonuses */}
-              {terrainInfo.bonuses && terrainInfo.bonuses.length > 0 && (
-                <div style={{ marginTop: "8px", fontSize: "12px" }}>
-                  <strong style={{ color: "#6ba368" }}>Bonuses:</strong>
-                  <ul style={{ margin: "2px 0 0", paddingLeft: "18px", color: "#ccc" }}>
-                    {terrainInfo.bonuses.map((bonus, i) => (
-                      <li key={i}>{bonus}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Penalties */}
-              {terrainInfo.penalties && terrainInfo.penalties.length > 0 && (
-                <div style={{ marginTop: "6px", fontSize: "12px" }}>
-                  <strong style={{ color: "#f97373" }}>Penalties:</strong>
-                  <ul style={{ margin: "2px 0 0", paddingLeft: "18px", color: "#ccc" }}>
-                    {terrainInfo.penalties.map((penalty, i) => (
-                      <li key={i}>{penalty}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              <label style={{ fontSize: "13px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                <span>Transfer to faction:</span>
+                <select
+                  value={region.owner}
+                  onChange={(e) => changeOwner(e.target.value)}
+                  style={{
+                    padding: "6px",
+                    borderRadius: "6px",
+                    border: "1px solid #555",
+                    background: "#222",
+                    color: "white",
+                  }}
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => (
+                    <option key={f} value={f}>
+                      Faction {f}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
+          )}
 
-            {isGM && (
-              <div
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: "10px",
-                  border: "1px dashed #444",
-                  background: "#141414",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "8px",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div>
-                    <strong>GM Controls</strong>
-                  </div>
-                  <button
-                    onClick={deleteRegion}
-                    className="small"
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: "6px",
-                      background: "#990000",
-                      border: "1px solid #660000",
-                      color: "white",
-                      fontSize: "12px",
-                      minHeight: "32px",
-                    }}
-                  >
-                    Delete
-                  </button>
+          {/* Resources, Fortifications, Notes in 3 columns (stacks on mobile) */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+            {/* Resources */}
+            <div>
+              <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>
+                Resources (max in {terrainInfo.name})
+              </h3>
+              
+              {/* Terrain info */}
+              {(terrainInfo.bonuses?.length > 0 || terrainInfo.penalties?.length > 0) && (
+                <div style={{ 
+                  fontSize: "12px", 
+                  marginBottom: "10px", 
+                  padding: "6px 8px", 
+                  background: "#1a1410",
+                  borderRadius: "6px",
+                  border: "1px solid #3a2f24"
+                }}>
+                  {terrainInfo.bonuses?.length > 0 && (
+                    <div style={{ color: "#b5e8a1", marginBottom: terrainInfo.penalties?.length > 0 ? "4px" : "0" }}>
+                      + {terrainInfo.bonuses.join(", ")}
+                    </div>
+                  )}
+                  {terrainInfo.penalties?.length > 0 && (
+                    <div style={{ color: "#f97373" }}>
+                      − {terrainInfo.penalties.join(", ")}
+                    </div>
+                  )}
                 </div>
-                <div style={{ marginTop: "6px" }}>
-                  <label style={{ fontSize: "12px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <span>Transfer to faction:</span>
-                    <select
-                      value={region.owner}
-                      onChange={(e) => changeOwner(e.target.value)}
-                      style={{
-                        padding: "6px 8px",
-                        borderRadius: "6px",
-                        border: "1px solid #555",
-                        background: "#222",
-                        color: "white",
-                        fontSize: "13px",
-                      }}
-                    >
-                      {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => (
-                        <option key={f} value={f}>
-                          Faction {f}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {/* Settlement */}
-            <div
-              style={{
-                padding: "8px 10px",
-                borderRadius: "10px",
-                border: "1px solid #333",
-                background: "#141414",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "6px",
-                  flexWrap: "wrap",
-                  gap: "6px",
-                }}
-              >
-                <strong>Settlement</strong>
-                <span style={{ fontSize: "12px", color: "#aaa", whiteSpace: "nowrap" }}>
-                  Current: <strong>{settlement}</strong>
-                </span>
-              </div>
-              {isOwner ? (
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "6px",
-                  }}
-                >
-                  <button className="small" onClick={() => setSettlement("None")}>None</button>
-                  <button className="small" onClick={() => setSettlement("Village")}>
-                    Village
-                  </button>
-                  <button className="small" onClick={() => setSettlement("Town")}>Town</button>
-                  <button className="small" onClick={() => setSettlement("City")}>City</button>
-                </div>
-              ) : (
-                <p style={{ color: "#aaa", fontSize: "12px", marginTop: "4px" }}>
-                  Only the owning faction can change its settlement.
-                </p>
               )}
+              
+              {/* Farms */}
+              <div style={{ marginBottom: "12px" }}>
+                <div style={{ fontSize: "14px", marginBottom: "4px" }}>
+                  Farms: <strong>{farmCount + farm2Count} / {terrainInfo.maxFarms}</strong>
+                  {farm2Count > 0 && ` (${farm2Count} upgraded)`}
+                </div>
+                {isOwner && (
+                  <div style={{ display: "flex", gap: "3px", flexWrap: "wrap" }}>
+                    <button className="small" onClick={addFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>+ Farm</button>
+                    {farmCount > 0 && <button className="small" onClick={upgradeFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Upgrade</button>}
+                    {(farmCount > 0 || farm2Count > 0) && <button className="small" onClick={removeFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Remove</button>}
+                  </div>
+                )}
+              </div>
+
+              {/* Mines */}
+              <div>
+                <div style={{ fontSize: "14px", marginBottom: "4px" }}>
+                  Mines: <strong>{mineCount + mine2Count} / {terrainInfo.maxMines}</strong>
+                  {mine2Count > 0 && ` (${mine2Count} upgraded)`}
+                </div>
+                {isOwner && (
+                  <div style={{ display: "flex", gap: "3px", flexWrap: "wrap" }}>
+                    <button className="small" onClick={addMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>+ Mine</button>
+                    {mineCount > 0 && <button className="small" onClick={upgradeMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Upgrade</button>}
+                    {(mineCount > 0 || mine2Count > 0) && <button className="small" onClick={removeMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Remove</button>}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Fortifications */}
-            <div
-              style={{
-                padding: "8px 10px",
-                borderRadius: "10px",
-                border: "1px solid #333",
-                background: "#141414",
-              }}
-            >
-              <strong>Fortifications</strong>
-              <p style={{ margin: "4px 0 2px", fontSize: "13px" }}>
-                Keep:{" "}
-                <strong>
-                  {keepActive} active / {keepDisabled} disabled
-                </strong>
-              </p>
-              <p style={{ margin: "0 0 6px", fontSize: "13px" }}>
-                Castle:{" "}
-                <strong>
-                  {castleActive} active / {castleDisabled} disabled
-                </strong>
-              </p>
-              {isOwner ? (
-                <>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "6px",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    <button className="small" onClick={toggleKeep}>
-                      {hasKeep ? "Remove Keep" : "Add Keep"}
-                    </button>
-                    <button className="small" onClick={toggleCastle}>
-                      {hasCastle ? "Remove Castle" : "Upgrade → Castle"}
-                    </button>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "6px",
-                    }}
-                  >
-                    <button className="small" onClick={() => disableOne("Keep")}>
-                      Disable Keep
-                    </button>
-                    <button className="small" onClick={() => enableOne("Keep")}>
-                      Enable Keep
-                    </button>
-                    <button className="small" onClick={() => disableOne("Castle")}>
-                      Disable Castle
-                    </button>
-                    <button className="small" onClick={() => enableOne("Castle")}>
-                      Enable Castle
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <p style={{ color: "#aaa", fontSize: "12px" }}>
-                  Only the owning faction can change forts.
-                </p>
+            <div>
+              <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>Fortifications</h3>
+              <div style={{ fontSize: "14px", marginBottom: "4px" }}>
+                Keep: <strong>{hasKeep ? "Yes" : "No"}</strong>
+              </div>
+              <div style={{ fontSize: "14px", marginBottom: "4px" }}>
+                Castle: <strong>{hasCastle ? "Yes" : "No"}</strong>
+              </div>
+              {isOwner && (
+                <div style={{ display: "flex", gap: "3px", flexWrap: "wrap", marginTop: "6px" }}>
+                  {!hasKeep && <button className="small" onClick={toggleKeep} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Add Keep</button>}
+                  {hasKeep && !hasCastle && (
+                    <>
+                      <button className="small" onClick={upgradeToCastle} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>→ Castle</button>
+                      <button className="small" onClick={toggleKeep} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Remove Keep</button>
+                    </>
+                  )}
+                  {hasCastle && <button className="small" onClick={removeCastle} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Remove Castle</button>}
+                </div>
               )}
             </div>
 
             {/* Notes */}
-            <div
-              style={{
-                padding: "8px 10px",
-                borderRadius: "10px",
-                border: "1px solid #333",
-                background: "#141414",
-              }}
-            >
-              <strong>Notes</strong>
+            <div>
+              <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>Notes</h3>
               {isOwner ? (
                 <>
                   <textarea
@@ -869,181 +577,22 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
                     onChange={(e) => setNotes(e.target.value)}
                     style={{
                       width: "100%",
-                      marginTop: "4px",
-                      height: "70px",
+                      height: "80px",
                       background: "#222",
                       color: "white",
-                      padding: "6px",
+                      padding: "8px",
                       borderRadius: "6px",
                       border: "1px solid #444",
                       fontSize: "13px",
                       boxSizing: "border-box",
                     }}
                   />
-                  <button
-                    onClick={saveNotes}
-                    className="small"
-                    style={{
-                      marginTop: "6px",
-                      padding: "6px 12px",
-                      background: "#0066cc",
-                      borderColor: "#004d99",
-                    }}
-                  >
-                    Save
+                  <button onClick={saveNotes} className="small" style={{ marginTop: "4px", margin: "4px 0 0 0", padding: "3px 8px", minHeight: "26px" }}>
+                    Save Notes
                   </button>
                 </>
               ) : (
-                <p style={{ marginTop: "4px", fontSize: "13px" }}>
-                  {notes || "No notes."}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN: farms + mines */}
-          <div
-            style={{
-              padding: "8px 10px",
-              borderRadius: "10px",
-              border: "1px solid #333",
-              background: "#141414",
-              display: "flex",
-              flexDirection: "column",
-              gap: "10px",
-            }}
-          >
-            <strong>Resource Buildings</strong>
-
-            {/* Farms */}
-            <div>
-              <h4
-                style={{
-                  margin: "4px 0",
-                  fontSize: "14px",
-                  fontWeight: 600,
-                }}
-              >
-                Farms (max {terrainInfo.maxFarms} in {terrainInfo.name})
-              </h4>
-              <p style={{ margin: "0 0 2px", fontSize: "13px" }}>
-                Farm:{" "}
-                <strong>
-                  {farmActive} active / {farmDisabled} disabled ({farmCount} total)
-                </strong>
-              </p>
-              <p style={{ margin: "0 0 4px", fontSize: "13px" }}>
-                Farm2:{" "}
-                <strong>
-                  {farm2Active} active / {farm2Disabled} disabled ({farm2Count} total)
-                </strong>
-              </p>
-              {isOwner ? (
-                <>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "6px",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    <button className="small" onClick={addFarm}>+ Farm</button>
-                    <button className="small" onClick={removeFarm}>- Farm</button>
-                    <button className="small" onClick={addFarm2}>+ Farm2 (upgrade)</button>
-                    <button className="small" onClick={removeFarm2}>- Farm2</button>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "6px",
-                    }}
-                  >
-                    <button className="small" onClick={() => disableOne("Farm")}>
-                      Disable Farm
-                    </button>
-                    <button className="small" onClick={() => enableOne("Farm")}>
-                      Enable Farm
-                    </button>
-                    <button className="small" onClick={() => disableOne("Farm2")}>
-                      Disable Farm2
-                    </button>
-                    <button className="small" onClick={() => enableOne("Farm2")}>
-                      Enable Farm2
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <p style={{ color: "#aaa", fontSize: "12px" }}>
-                  Only the owning faction can modify farms.
-                </p>
-              )}
-            </div>
-
-            {/* Mines */}
-            <div>
-              <h4
-                style={{
-                  margin: "8px 0 4px",
-                  fontSize: "14px",
-                  fontWeight: 600,
-                }}
-              >
-                Mines (max {terrainInfo.maxMines} in {terrainInfo.name})
-              </h4>
-              <p style={{ margin: "0 0 2px", fontSize: "13px" }}>
-                Mine:{" "}
-                <strong>
-                  {mineActive} active / {mineDisabled} disabled ({mineCount} total)
-                </strong>
-              </p>
-              <p style={{ margin: "0 0 4px", fontSize: "13px" }}>
-                Mine2:{" "}
-                <strong>
-                  {mine2Active} active / {mine2Disabled} disabled ({mine2Count} total)
-                </strong>
-              </p>
-              {isOwner ? (
-                <>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "6px",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    <button className="small" onClick={addMine}>+ Mine</button>
-                    <button className="small" onClick={removeMine}>- Mine</button>
-                    <button className="small" onClick={addMine2}>+ Mine2 (upgrade)</button>
-                    <button className="small" onClick={removeMine2}>- Mine2</button>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "6px",
-                    }}
-                  >
-                    <button className="small" onClick={() => disableOne("Mine")}>
-                      Disable Mine
-                    </button>
-                    <button className="small" onClick={() => enableOne("Mine")}>
-                      Enable Mine
-                    </button>
-                    <button className="small" onClick={() => disableOne("Mine2")}>
-                      Disable Mine2
-                    </button>
-                    <button className="small" onClick={() => enableOne("Mine2")}>
-                      Enable Mine2
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <p style={{ color: "#aaa", fontSize: "12px" }}>
-                  Only the owning faction can modify mines.
-                </p>
+                <p style={{ fontSize: "13px", margin: 0 }}>{notes || "No notes."}</p>
               )}
             </div>
           </div>
