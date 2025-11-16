@@ -13,74 +13,7 @@ import {
   onSnapshot as onDocSnapshot,
   setDoc,
 } from "firebase/firestore";
-
-const BUILDING_RULES = {
-  Village: {
-    gold: 3,
-    manpower: 20,
-    manpowerCost: 2,
-    hsgCap: 50,
-    levyInf: 200,
-    settlement: true,
-  },
-  Town: {
-    gold: 5,
-    manpower: 40,
-    manpowerCost: 4,
-    hsgCap: 100,
-    levyInf: 400,
-    settlement: true,
-  },
-  City: {
-    gold: 8,
-    manpower: 80,
-    manpowerCost: 10,
-    hsgCap: 150,
-    levyInf: 800,
-    settlement: true,
-  },
-
-  Farm: {
-    gold: 0,
-    manpower: 0,
-    manpowerCost: 2,
-    levyArch: 40,
-    farmEquivalent: 1,
-  },
-  Farm2: {
-    gold: 0,
-    manpower: 0,
-    manpowerCost: 4,
-    levyArch: 80,
-    farmEquivalent: 2,
-  },
-
-  Mine: {
-    gold: 2,
-    manpower: 0,
-    manpowerCost: 2,
-    mineEquivalent: 1,
-  },
-  Mine2: {
-    gold: 4,
-    manpower: 0,
-    manpowerCost: 4,
-    mineEquivalent: 2,
-  },
-
-  Keep: {
-    gold: -3,
-    manpower: 0,
-    manpowerCost: 2,
-    hsgCap: 150,
-  },
-  Castle: {
-    gold: -6,
-    manpower: 0,
-    manpowerCost: 4,
-    hsgCap: 250,
-  },
-};
+import { BUILDING_RULES, HSG_UNITS, LEVY_UPKEEP_PER_UNIT } from "../config/buildingRules";
 
 function calculateEconomy(regions) {
   let gold = 0;
@@ -126,18 +59,6 @@ function calculateEconomy(regions) {
     mineEquivalent: mineEq,
   };
 }
-
-// HSG + navy + levy settings (for econ summary)
-const HSG_UNITS = [
-  { key: "huscarls", label: "Huscarls", upkeep: 2 },
-  { key: "dismountedKnights", label: "Dismounted Knights", upkeep: 3 },
-  { key: "mountedKnights", label: "Mounted Knights", upkeep: 4 },
-  { key: "lightHorse", label: "Light Horse", upkeep: 2 },
-];
-
-const NAVY_UNITS = [{ key: "warships", label: "Warships", upkeep: 3 }];
-const LEVY_UPKEEP_PER_UNIT = 0.25;
-
 const SETTLEMENTS = ["Village", "Town", "City"];
 
 export default function RegionDetails() {

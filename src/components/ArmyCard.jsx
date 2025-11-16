@@ -1,11 +1,7 @@
-import React from "react";
+// components/ArmyCard.jsx - Update with new upkeep costs
 
-const HSG_CONFIG = [
-  { key: "huscarls", label: "Huscarls", upkeep: 2 },
-  { key: "dismountedKnights", label: "Dismounted Knights", upkeep: 3 },
-  { key: "mountedKnights", label: "Mounted Knights", upkeep: 4 },
-  { key: "lightHorse", label: "Light Horse", upkeep: 2 },
-];
+import React from "react";
+import { HSG_UNITS } from "../config/buildingRules";
 
 export default function ArmyCard({
   army,
@@ -32,7 +28,6 @@ export default function ArmyCard({
 
   return (
     <div className="card">
-      {/* Header: name + location + delete */}
       <div
         style={{
           display: "flex",
@@ -96,18 +91,17 @@ export default function ArmyCard({
         </div>
       </div>
 
-      {/* Household Guard grid */}
       <h3 style={{ fontSize: 14, marginTop: 4, marginBottom: 6 }}>
         Household Guard
       </h3>
       <div className="army-grid">
-        {HSG_CONFIG.map((u) => {
+        {HSG_UNITS.map((u) => {
           const count = army[u.key] || 0;
           return (
             <div key={u.key} className="army-item">
               <div className="army-item-header">
                 <span>{u.label}</span>
-                <span>{u.upkeep} gold/unit</span>
+                <span>{u.upkeep}g/unit</span>
               </div>
               <div className="army-controls">
                 <button
@@ -129,7 +123,6 @@ export default function ArmyCard({
         })}
       </div>
 
-      {/* Levies for this army */}
       <h3 style={{ fontSize: 14, marginTop: 10, marginBottom: 6 }}>
         Levies in this Army
       </h3>
@@ -137,7 +130,7 @@ export default function ArmyCard({
         <div className="army-item">
           <div className="army-item-header">
             <span>Levy Infantry (units of 10)</span>
-            <span>0.25 gold/unit</span>
+            <span>1g raise, 0.25g/turn</span>
           </div>
           <div className="army-controls">
             <button
@@ -159,7 +152,7 @@ export default function ArmyCard({
         <div className="army-item">
           <div className="army-item-header">
             <span>Levy Archers (units of 10)</span>
-            <span>0.25 gold/unit</span>
+            <span>1g raise, 0.25g/turn</span>
           </div>
           <div className="army-controls">
             <button

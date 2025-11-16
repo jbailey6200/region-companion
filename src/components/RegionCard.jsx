@@ -1,9 +1,10 @@
-// RegionCard.jsx - Replace the entire file
+// components/RegionCard.jsx - Update building functions to include costs
 
 import { useState, useEffect } from "react";
 import { db } from "../firebase/config";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { canAddBuilding, getTerrainInfo, TERRAIN_TYPES } from "../config/terrainRules";
+import { BUILDING_RULES } from "../config/buildingRules";
 
 const SETTLEMENTS = ["Village", "Town", "City"];
 
@@ -26,11 +27,9 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
   const isGM = role === "gm";
   const isOwner = (role === "faction" && myFactionId === region.owner) || isGM;
 
-  // Terrain info
   const terrain = region.terrain || TERRAIN_TYPES.PLAINS;
   const terrainInfo = getTerrainInfo(terrain);
 
-  // Count helpers
   const count = (name) => upgrades.filter((u) => u === name).length;
   const countGroup = (names) => upgrades.filter((u) => names.includes(u)).length;
 
@@ -41,6 +40,115 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
     return "None";
   }
 
+  function getSettlementRequirements(type) {
+    const current = getSettlement();
+    const villageCount = eco?.villageCount || 0;
+    const townCount = eco?.townCount || 0;
+    const cityCount = eco?.cityCount || 0;
+    const farmEq = eco?.farmEquivalent || 0;
+    const mineEq = eco?.mineEquivalent || 0;
+
+    const requirements = {
+      allowed: true,
+      reasons: [],
+      tooltip: "",
+    };
+
+    if (type === "None") return requirements;
+
+    const terrainCheck = canAddBuilding(terrain, type, upgrades);
+    if (!terrainCheck.allowed) {
+      requirements.allowed = false;
+      requirements.reasons.push(terrainCheck.reason);
+    }
+
+    if (current === type) {
+      requirements.reasons.push(`Already ${type}`);
+    }
+
+    if (type === "Village") {
+      if (current !== "None") {
+        requirements.allowed = false;
+        requirements.reasons.push("Only one settlement per region");
+      }
+      
+      const neededVillages = current === "Village" ? villageCount : villageCount + 1;
+      const requiredFarms = neededVillages * 2;
+      
+      if (farmEq < requiredFarms) {
+        requirements.allowed = false;
+        requirements.reasons.push(`Need ${requiredFarms} farms (have ${farmEq})`);
+      } else {
+        requirements.reasons.push(`✓ ${requiredFarms} farms`);
+      }
+      
+      requirements.reasons.push(`Cost: ${BUILDING_RULES.Village.buildCost}g`);
+    }
+
+    if (type === "Town") {
+      if (current === "City") {
+        requirements.allowed = false;
+        requirements.reasons.push("Already a City");
+      }
+      
+      const neededTowns = current === "Town" ? townCount : townCount + 1;
+      const requiredFarms = neededTowns * 4;
+      const requiredMines = neededTowns * 1;
+      
+      const missingReqs = [];
+      if (farmEq < requiredFarms) {
+        requirements.allowed = false;
+        missingReqs.push(`farms: ${farmEq}/${requiredFarms}`);
+      } else {
+        requirements.reasons.push(`✓ ${requiredFarms} farms`);
+      }
+      
+      if (mineEq < requiredMines) {
+        requirements.allowed = false;
+        missingReqs.push(`mines: ${mineEq}/${requiredMines}`);
+      } else {
+        requirements.reasons.push(`✓ ${requiredMines} mine${requiredMines > 1 ? 's' : ''}`);
+      }
+      
+      if (missingReqs.length > 0) {
+        requirements.reasons.unshift(`Need ${missingReqs.join(', ')}`);
+      }
+      
+      const cost = current === "Village" ? BUILDING_RULES.Town.buildCost : BUILDING_RULES.Village.buildCost + BUILDING_RULES.Town.buildCost;
+      requirements.reasons.push(`Cost: ${BUILDING_RULES.Town.buildCost}g${current === "Village" ? " (upgrade)" : ""}`);
+    }
+
+    if (type === "City") {
+      const neededCities = current === "City" ? cityCount : cityCount + 1;
+      const requiredFarms = neededCities * 6;
+      const requiredMines = neededCities * 2;
+      
+      const missingReqs = [];
+      if (farmEq < requiredFarms) {
+        requirements.allowed = false;
+        missingReqs.push(`farms: ${farmEq}/${requiredFarms}`);
+      } else {
+        requirements.reasons.push(`✓ ${requiredFarms} farms`);
+      }
+      
+      if (mineEq < requiredMines) {
+        requirements.allowed = false;
+        missingReqs.push(`mines: ${mineEq}/${requiredMines}`);
+      } else {
+        requirements.reasons.push(`✓ ${requiredMines} mines`);
+      }
+      
+      if (missingReqs.length > 0) {
+        requirements.reasons.unshift(`Need ${missingReqs.join(', ')}`);
+      }
+      
+      requirements.reasons.push(`Cost: ${BUILDING_RULES.City.buildCost}g (upgrade)`);
+    }
+
+    requirements.tooltip = requirements.reasons.join(" • ");
+    return requirements;
+  }
+
   async function updateRegionFields(fields) {
     await updateDoc(doc(db, "regions", region.id), fields);
   }
@@ -49,7 +157,6 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
     await updateRegionFields({ upgrades: newUps, disabledUpgrades: [] });
   }
 
-  // Settlement controls
   async function setSettlement(type) {
     if (!isOwner) return;
 
@@ -61,42 +168,19 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
       return;
     }
 
-    const check = canAddBuilding(terrain, type, upgrades);
-    if (!check.allowed) {
-      window.alert(check.reason);
+    const reqs = getSettlementRequirements(type);
+    if (!reqs.allowed) {
+      window.alert(reqs.reasons.join("\n"));
       return;
     }
 
-    if (type === "Village") {
-      if (current !== "None") {
-        window.alert("Only one settlement per region.");
-        return;
-      }
-    }
-
-    if (type === "Town") {
-      if (current === "City") {
-        window.alert("Already a City.");
-        return;
-      }
-      if (!eco || eco.farmEquivalent < 4 || eco.mineEquivalent < 1) {
-        window.alert("Requires 4 Farms (eq) and 1 Mine to become a Town.");
-        return;
-      }
-    }
-
-    if (type === "City") {
-      if (!eco || eco.farmEquivalent < 6 || eco.mineEquivalent < 2) {
-        window.alert("Requires 6 Farms (eq) and 2 Mine equivalents to become a City.");
-        return;
-      }
-    }
+    const cost = BUILDING_RULES[type].buildCost;
+    if (!window.confirm(`Build ${type} for ${cost} gold?`)) return;
 
     newUps.push(type);
     await updateUpgrades(newUps);
   }
 
-  // Farm management
   async function addFarm() {
     if (!isOwner) return;
     const check = canAddBuilding(terrain, "Farm", upgrades);
@@ -109,6 +193,10 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
       window.alert(`Max ${terrainInfo.maxFarms} farms in ${terrainInfo.name}.`);
       return;
     }
+    
+    const cost = BUILDING_RULES.Farm.buildCost;
+    if (!window.confirm(`Build Farm for ${cost} gold?`)) return;
+    
     await updateUpgrades([...upgrades, "Farm"]);
   }
 
@@ -119,6 +207,10 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
       window.alert("No Farm to upgrade.");
       return;
     }
+    
+    const cost = BUILDING_RULES.Farm2.buildCost;
+    if (!window.confirm(`Upgrade Farm to Farm2 for ${cost} gold?`)) return;
+    
     const newUps = [...upgrades];
     newUps[farmIdx] = "Farm2";
     await updateUpgrades(newUps);
@@ -139,7 +231,6 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
     await updateUpgrades(newUps);
   }
 
-  // Mine management
   async function addMine() {
     if (!isOwner) return;
     const check = canAddBuilding(terrain, "Mine", upgrades);
@@ -152,6 +243,10 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
       window.alert(`Max ${terrainInfo.maxMines} mines in ${terrainInfo.name}.`);
       return;
     }
+    
+    const cost = BUILDING_RULES.Mine.buildCost;
+    if (!window.confirm(`Build Mine for ${cost} gold?`)) return;
+    
     await updateUpgrades([...upgrades, "Mine"]);
   }
 
@@ -162,6 +257,10 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
       window.alert("No Mine to upgrade.");
       return;
     }
+    
+    const cost = BUILDING_RULES.Mine2.buildCost;
+    if (!window.confirm(`Upgrade Mine to Mine2 for ${cost} gold?`)) return;
+    
     const newUps = [...upgrades];
     newUps[mineIdx] = "Mine2";
     await updateUpgrades(newUps);
@@ -182,7 +281,6 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
     await updateUpgrades(newUps);
   }
 
-  // Fortifications
   const hasKeep = upgrades.includes("Keep");
   const hasCastle = upgrades.includes("Castle");
 
@@ -197,6 +295,10 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
         window.alert(check.reason);
         return;
       }
+      
+      const cost = BUILDING_RULES.Keep.buildCost;
+      if (!window.confirm(`Build Keep for ${cost} gold?`)) return;
+      
       newUps.push("Keep");
     }
     await updateUpgrades(newUps);
@@ -213,6 +315,10 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
       window.alert(check.reason);
       return;
     }
+    
+    const cost = BUILDING_RULES.Castle.buildCost;
+    if (!window.confirm(`Upgrade Keep to Castle for ${cost} gold?`)) return;
+    
     await updateUpgrades([...upgrades, "Castle"]);
   }
 
@@ -254,7 +360,6 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
   const mineCount = count("Mine");
   const mine2Count = count("Mine2");
 
-  // Summary for collapsed view
   const summaryParts = [];
   if (farmCount) summaryParts.push(`${farmCount} Farm`);
   if (farm2Count) summaryParts.push(`${farm2Count} Farm2`);
@@ -264,13 +369,12 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
   if (hasCastle) summaryParts.push("Castle");
   const summaryText = summaryParts.length ? summaryParts.join(" • ") : "No buildings";
 
-  // Settlement prerequisites
-  const canUpgradeToTown = eco && eco.farmEquivalent >= 4 && eco.mineEquivalent >= 1;
-  const canUpgradeToCity = eco && eco.farmEquivalent >= 6 && eco.mineEquivalent >= 2;
+  const villageReqs = getSettlementRequirements("Village");
+  const townReqs = getSettlementRequirements("Town");
+  const cityReqs = getSettlementRequirements("City");
 
   return (
     <div className="card" style={{ marginBottom: "12px" }}>
-      {/* Header - always visible */}
       <div
         style={{
           display: "flex",
@@ -396,31 +500,76 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
           )}
         </div>
         
-        {/* Settlement buttons + Expand/Collapse */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-          {isOwner && ["None", "Village", "Town", "City"].map((s) => {
-            const isCurrent = settlement === s;
-            const isDisabled = (s === "Town" && !canUpgradeToTown) || (s === "City" && !canUpgradeToCity);
-            
-            return (
+          {isOwner && (
+            <>
               <button
-                key={s}
-                onClick={(e) => { e.stopPropagation(); setSettlement(s); }}
-                disabled={isDisabled}
+                onClick={(e) => { e.stopPropagation(); setSettlement("None"); }}
                 className="small"
                 style={{
-                  background: isCurrent ? "#30425d" : undefined,
-                  borderColor: isCurrent ? "#4a5d7a" : undefined,
-                  opacity: isDisabled ? 0.5 : 1,
+                  background: settlement === "None" ? "#30425d" : undefined,
+                  borderColor: settlement === "None" ? "#4a5d7a" : undefined,
                   margin: "0 2px",
                   padding: "4px 8px",
                   minHeight: "28px",
                 }}
               >
-                {s}
+                None
               </button>
-            );
-          })}
+              
+              <button
+                onClick={(e) => { e.stopPropagation(); setSettlement("Village"); }}
+                disabled={!villageReqs.allowed}
+                className="small"
+                title={villageReqs.tooltip}
+                style={{
+                  background: settlement === "Village" ? "#30425d" : undefined,
+                  borderColor: settlement === "Village" ? "#4a5d7a" : undefined,
+                  opacity: !villageReqs.allowed ? 0.5 : 1,
+                  margin: "0 2px",
+                  padding: "4px 8px",
+                  minHeight: "28px",
+                }}
+              >
+                Village
+              </button>
+              
+              <button
+                onClick={(e) => { e.stopPropagation(); setSettlement("Town"); }}
+                disabled={!townReqs.allowed}
+                className="small"
+                title={townReqs.tooltip}
+                style={{
+                  background: settlement === "Town" ? "#30425d" : undefined,
+                  borderColor: settlement === "Town" ? "#4a5d7a" : undefined,
+                  opacity: !townReqs.allowed ? 0.5 : 1,
+                  margin: "0 2px",
+                  padding: "4px 8px",
+                  minHeight: "28px",
+                }}
+              >
+                Town
+              </button>
+              
+              <button
+                onClick={(e) => { e.stopPropagation(); setSettlement("City"); }}
+                disabled={!cityReqs.allowed}
+                className="small"
+                title={cityReqs.tooltip}
+                style={{
+                  background: settlement === "City" ? "#30425d" : undefined,
+                  borderColor: settlement === "City" ? "#4a5d7a" : undefined,
+                  opacity: !cityReqs.allowed ? 0.5 : 1,
+                  margin: "0 2px",
+                  padding: "4px 8px",
+                  minHeight: "28px",
+                }}
+              >
+                City
+              </button>
+            </>
+          )}
+          
           <button
             type="button"
             className="small"
@@ -440,13 +589,51 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
         </div>
       </div>
 
-      {/* Expanded content */}
       {expanded && (
         <div
           style={{ marginTop: "16px" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* GM Controls */}
+          {isOwner && (
+            <div style={{ 
+              marginBottom: "16px", 
+              padding: "12px", 
+              background: "#1a1410",
+              borderRadius: "8px",
+              border: "1px solid #3a2f24"
+            }}>
+              <h3 style={{ fontSize: "14px", marginTop: 0, marginBottom: "8px", color: "#d1b26b" }}>
+                Settlement Requirements
+              </h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "8px", fontSize: "12px" }}>
+                <div>
+                  <strong style={{ color: villageReqs.allowed ? "#b5e8a1" : "#f97373" }}>Village:</strong>
+                  <div style={{ marginTop: "4px", color: "#c7bca5" }}>
+                    {villageReqs.reasons.map((r, i) => (
+                      <div key={i}>{r}</div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <strong style={{ color: townReqs.allowed ? "#b5e8a1" : "#f97373" }}>Town:</strong>
+                  <div style={{ marginTop: "4px", color: "#c7bca5" }}>
+                    {townReqs.reasons.map((r, i) => (
+                      <div key={i}>{r}</div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <strong style={{ color: cityReqs.allowed ? "#b5e8a1" : "#f97373" }}>City:</strong>
+                  <div style={{ marginTop: "4px", color: "#c7bca5" }}>
+                    {cityReqs.reasons.map((r, i) => (
+                      <div key={i}>{r}</div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {isGM && (
             <div className="card" style={{ marginBottom: "12px", padding: "12px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
@@ -482,15 +669,12 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
             </div>
           )}
 
-          {/* Resources, Fortifications, Notes in 3 columns (stacks on mobile) */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
-            {/* Resources */}
             <div>
               <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>
                 Resources (max in {terrainInfo.name})
               </h3>
               
-              {/* Terrain info */}
               {(terrainInfo.bonuses?.length > 0 || terrainInfo.penalties?.length > 0) && (
                 <div style={{ 
                   fontSize: "12px", 
@@ -513,7 +697,6 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
                 </div>
               )}
               
-              {/* Farms */}
               <div style={{ marginBottom: "12px" }}>
                 <div style={{ fontSize: "14px", marginBottom: "4px" }}>
                   Farms: <strong>{farmCount + farm2Count} / {terrainInfo.maxFarms}</strong>
@@ -521,14 +704,23 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
                 </div>
                 {isOwner && (
                   <div style={{ display: "flex", gap: "3px", flexWrap: "wrap" }}>
-                    <button className="small" onClick={addFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>+ Farm</button>
-                    {farmCount > 0 && <button className="small" onClick={upgradeFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Upgrade</button>}
-                    {(farmCount > 0 || farm2Count > 0) && <button className="small" onClick={removeFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Remove</button>}
+                    <button className="small" onClick={addFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
+                      + Farm ({BUILDING_RULES.Farm.buildCost}g)
+                    </button>
+                    {farmCount > 0 && (
+                      <button className="small" onClick={upgradeFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
+                        Upgrade ({BUILDING_RULES.Farm2.buildCost}g)
+                      </button>
+                    )}
+                    {(farmCount > 0 || farm2Count > 0) && (
+                      <button className="small" onClick={removeFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
+                        Remove
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Mines */}
               <div>
                 <div style={{ fontSize: "14px", marginBottom: "4px" }}>
                   Mines: <strong>{mineCount + mine2Count} / {terrainInfo.maxMines}</strong>
@@ -536,15 +728,24 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
                 </div>
                 {isOwner && (
                   <div style={{ display: "flex", gap: "3px", flexWrap: "wrap" }}>
-                    <button className="small" onClick={addMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>+ Mine</button>
-                    {mineCount > 0 && <button className="small" onClick={upgradeMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Upgrade</button>}
-                    {(mineCount > 0 || mine2Count > 0) && <button className="small" onClick={removeMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Remove</button>}
+                    <button className="small" onClick={addMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
+                      + Mine ({BUILDING_RULES.Mine.buildCost}g)
+                    </button>
+                    {mineCount > 0 && (
+                      <button className="small" onClick={upgradeMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
+                        Upgrade ({BUILDING_RULES.Mine2.buildCost}g)
+                      </button>
+                    )}
+                    {(mineCount > 0 || mine2Count > 0) && (
+                      <button className="small" onClick={removeMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
+                        Remove
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Fortifications */}
             <div>
               <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>Fortifications</h3>
               <div style={{ fontSize: "14px", marginBottom: "4px" }}>
@@ -555,19 +756,30 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
               </div>
               {isOwner && (
                 <div style={{ display: "flex", gap: "3px", flexWrap: "wrap", marginTop: "6px" }}>
-                  {!hasKeep && <button className="small" onClick={toggleKeep} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Add Keep</button>}
+                  {!hasKeep && (
+                    <button className="small" onClick={toggleKeep} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
+                      Add Keep ({BUILDING_RULES.Keep.buildCost}g)
+                    </button>
+                  )}
                   {hasKeep && !hasCastle && (
                     <>
-                      <button className="small" onClick={upgradeToCastle} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>→ Castle</button>
-                      <button className="small" onClick={toggleKeep} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Remove Keep</button>
+                      <button className="small" onClick={upgradeToCastle} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
+                        → Castle ({BUILDING_RULES.Castle.buildCost}g)
+                      </button>
+                      <button className="small" onClick={toggleKeep} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
+                        Remove Keep
+                      </button>
                     </>
                   )}
-                  {hasCastle && <button className="small" onClick={removeCastle} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>Remove Castle</button>}
+                  {hasCastle && (
+                    <button className="small" onClick={removeCastle} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
+                      Remove Castle
+                    </button>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Notes */}
             <div>
               <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>Notes</h3>
               {isOwner ? (

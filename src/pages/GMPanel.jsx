@@ -9,21 +9,7 @@ import {
   doc,
 } from "firebase/firestore";
 import RegionCard from "../components/RegionCard";
-
-const BUILDING_RULES = {
-  Village: { gold: 3, manpower: 20, manpowerCost: 2, hsgCap: 50, settlement: true },
-  Town:    { gold: 5, manpower: 40, manpowerCost: 4, hsgCap: 100, settlement: true },
-  City:    { gold: 8, manpower: 80, manpowerCost: 10, hsgCap: 150, settlement: true },
-
-  Farm:  { gold: 0, manpower: 0, manpowerCost: 2, farmEquivalent: 1 },
-  Farm2: { gold: 0, manpower: 0, manpowerCost: 4, farmEquivalent: 2 },
-
-  Mine:  { gold: 2, manpower: 0, manpowerCost: 2, mineEquivalent: 1 },
-  Mine2: { gold: 4, manpower: 0, manpowerCost: 4, mineEquivalent: 2 },
-
-  Keep:   { gold: -3, manpower: 0, manpowerCost: 2, hsgCap: 150 },
-  Castle: { gold: -6, manpower: 0, manpowerCost: 4, hsgCap: 250 },
-};
+import { BUILDING_RULES } from "../config/buildingRules";
 
 function calculateEconomy(regions) {
   let gold = 0;

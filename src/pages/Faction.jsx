@@ -16,6 +16,7 @@ import {
 import RegionCard from "../components/RegionCard";
 import ArmyCard from "../components/ArmyCard";
 import { getAuthState } from "../utils/auth";
+import { BUILDING_RULES } from "../config/buildingRules";
 
 /* -------------------------------------------------------
    TOAST SYSTEM
@@ -62,74 +63,6 @@ function useToasts() {
 /* -------------------------------------------------------
    CONSTANTS / ECONOMY
 -------------------------------------------------------- */
-
-const BUILDING_RULES = {
-  Village: {
-    gold: 3,
-    manpower: 20,
-    manpowerCost: 2,
-    hsgCap: 50,
-    levyInf: 200,
-    settlement: true,
-  },
-  Town: {
-    gold: 5,
-    manpower: 40,
-    manpowerCost: 4,
-    hsgCap: 100,
-    levyInf: 400,
-    settlement: true,
-  },
-  City: {
-    gold: 8,
-    manpower: 80,
-    manpowerCost: 10,
-    hsgCap: 150,
-    levyInf: 800,
-    settlement: true,
-  },
-
-  Farm: {
-    gold: 0,
-    manpower: 0,
-    manpowerCost: 2,
-    levyArch: 40,
-    farmEquivalent: 1,
-  },
-  Farm2: {
-    gold: 0,
-    manpower: 0,
-    manpowerCost: 4,
-    levyArch: 80,
-    farmEquivalent: 2,
-  },
-
-  Mine: {
-    gold: 2,
-    manpower: 0,
-    manpowerCost: 2,
-    mineEquivalent: 1,
-  },
-  Mine2: {
-    gold: 4,
-    manpower: 0,
-    manpowerCost: 4,
-    mineEquivalent: 2,
-  },
-
-  Keep: {
-    gold: -3,
-    manpower: 0,
-    manpowerCost: 2,
-    hsgCap: 150,
-  },
-  Castle: {
-    gold: -6,
-    manpower: 0,
-    manpowerCost: 4,
-    hsgCap: 250,
-  },
-};
 
 const AGENT_UPKEEP = {
   spy: 1,
