@@ -1,4 +1,4 @@
-// pages/Faction.jsx - FULL FILE WITH RELIGION TAB
+// pages/Faction.jsx - FULL FILE WITH FACTION RENAMING
 
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useMemo } from "react";
@@ -21,6 +21,7 @@ import CharacterCard from "../components/CharacterCard";
 import { getAuthState } from "../utils/auth";
 import { BUILDING_RULES } from "../config/buildingRules";
 import { DEITIES } from "../config/religionRules";
+import { TERRAIN_TYPES } from "../config/terrainRules";
 
 /* -------------------------------------------------------
    TOAST SYSTEM
@@ -65,7 +66,7 @@ function useToasts() {
 }
 
 /* -------------------------------------------------------
-   CONSTANTS / ECONOMY
+   CONSTANTS / ECONOMY WITH DEITY BONUSES
 -------------------------------------------------------- */
 
 const AGENT_UPKEEP = {
@@ -74,7 +75,7 @@ const AGENT_UPKEEP = {
   enforcer: 2,
 };
 
-function calculateEconomy(regions) {
+function calculateEconomy(regions, patronDeity = null) {
   let goldTotal = 0;
   let manpowerProdTotal = 0;
   let manpowerCostTotal = 0;
@@ -88,9 +89,25 @@ function calculateEconomy(regions) {
   let cityCountTotal = 0;
   let villageCountTotal = 0;
 
+  // Track region types and resources for deity bonuses
+  let riverRegionCount = 0;
+  let coastalRegionCount = 0;
+  let mountainRegionCount = 0;
+  let hillsRegionCount = 0;
+  let totalMineCount = 0;
+
+  const deity = patronDeity ? DEITIES[patronDeity] : null;
+
   for (const r of regions) {
     const ups = r.upgrades || [];
     const disabled = r.disabledUpgrades || [];
+    const terrain = r.terrain || TERRAIN_TYPES.PLAINS;
+
+    // Count terrain types for deity bonuses
+    if (terrain === TERRAIN_TYPES.RIVER) riverRegionCount++;
+    if (terrain === TERRAIN_TYPES.COAST) coastalRegionCount++;
+    if (terrain === TERRAIN_TYPES.MOUNTAINS) mountainRegionCount++;
+    if (terrain === TERRAIN_TYPES.HILLS) hillsRegionCount++;
 
     const counts = {};
     ups.forEach((u) => {
@@ -114,19 +131,89 @@ function calculateEconomy(regions) {
       const rule = BUILDING_RULES[name];
       if (!rule) return;
 
-      regionGold += (rule.gold || 0) * count;
-      regionManProd += (rule.manpower || 0) * count;
-      regionManCost += (rule.manpowerCost || 0) * count;
-      regionHsgCap += (rule.hsgCap || 0) * count;
+      // Base values
+      let gold = rule.gold || 0;
+      let manpower = rule.manpower || 0;
+      let manpowerCost = rule.manpowerCost || 0;
+      let hsgCap = rule.hsgCap || 0;
+      let levyArch = rule.levyArch || 0;
+
+      // Apply deity bonuses to specific buildings
+      if (deity) {
+        // Pynthar: +2 gold per Town, +3 per City
+        if (deity.bonuses.townGold && name === "Town") {
+          gold += deity.bonuses.townGold;
+        }
+        if (deity.bonuses.cityGold && name === "City") {
+          gold += deity.bonuses.cityGold;
+        }
+
+        // Ombrax: +1 gold per Mine
+        if (deity.bonuses.mineGold && (name === "Mine" || name === "Mine2")) {
+          gold += deity.bonuses.mineGold;
+        }
+
+        // Kyren/Kyrena: +20 manpower per settlement
+        if (deity.bonuses.settlementManpower && (name === "Village" || name === "Town" || name === "City")) {
+          manpower += deity.bonuses.settlementManpower;
+        }
+
+        // Umara: +20 HSG for Keep, +40 for Castle
+        if (name === "Keep" && deity.bonuses.keepHSG) {
+          hsgCap += deity.bonuses.keepHSG;
+        }
+        if (name === "Castle" && deity.bonuses.castleHSG) {
+          hsgCap += deity.bonuses.castleHSG;
+        }
+
+        // Altaea: +10 levy archers for Farm, +20 for Farm2
+        if (name === "Farm" && deity.bonuses.farmLevyBonus) {
+          levyArch += deity.bonuses.farmLevyBonus;
+        }
+        if (name === "Farm2" && deity.bonuses.farm2LevyBonus) {
+          levyArch += deity.bonuses.farm2LevyBonus;
+        }
+      }
+
+      regionGold += gold * count;
+      regionManProd += manpower * count;
+      regionManCost += manpowerCost * count;
+      regionHsgCap += hsgCap * count;
       regionFarmEq += (rule.farmEquivalent || 0) * count;
       regionMineEq += (rule.mineEquivalent || 0) * count;
       regionLevyInf += (rule.levyInf || 0) * count;
-      regionLevyArch += (rule.levyArch || 0) * count;
+      regionLevyArch += levyArch * count;
 
       if (name === "Town") townCountTotal += count;
       if (name === "City") cityCountTotal += count;
       if (name === "Village") villageCountTotal += count;
+      if (name === "Mine" || name === "Mine2") totalMineCount += count;
     });
+
+    // Apply terrain-based deity bonuses to the region
+    if (deity) {
+      // Kurimbor: +1 gold per River region
+      if (terrain === TERRAIN_TYPES.RIVER && deity.bonuses.riverGold) {
+        regionGold += deity.bonuses.riverGold;
+      }
+
+      // Ombrax: +1 gold per Mountain/Hills region
+      if (deity.bonuses.mountainHillsGold) {
+        if (terrain === TERRAIN_TYPES.MOUNTAINS || terrain === TERRAIN_TYPES.HILLS) {
+          regionGold += deity.bonuses.mountainHillsGold;
+        }
+      }
+
+      // Trengar: +2 gold per Coastal region
+      if (terrain === TERRAIN_TYPES.COAST && deity.bonuses.coastalGold) {
+        regionGold += deity.bonuses.coastalGold;
+      }
+
+      // Ulfus: +3 gold per Mountain region
+      if (terrain === TERRAIN_TYPES.MOUNTAINS && deity.bonuses.mountainGold) {
+        regionGold += deity.bonuses.mountainGold;
+      }
+    }
 
     const unrest = r.unrest || 0;
 
@@ -179,7 +266,36 @@ function calculateEconomy(regions) {
     townCount: townCountTotal,
     cityCount: cityCountTotal,
     villageCount: villageCountTotal,
+    // Include deity bonus breakdown for display
+    deityBonuses: deity ? {
+      riverRegions: riverRegionCount,
+      coastalRegions: coastalRegionCount,
+      mountainRegions: mountainRegionCount,
+      hillsRegions: hillsRegionCount,
+      mines: totalMineCount,
+    } : null,
   };
+}
+
+// Helper function for modified upkeep
+function getModifiedUpkeep(unitType, baseUpkeep, patronDeity) {
+  const deity = patronDeity ? DEITIES[patronDeity] : null;
+  if (!deity) return baseUpkeep;
+  
+  switch(unitType) {
+    case 'huscarls':
+      return deity.bonuses.huscarlUpkeep ?? baseUpkeep;
+    case 'dismountedKnights':
+      return deity.bonuses.dismountedKnightUpkeep ?? baseUpkeep;
+    case 'mountedKnights':
+      return deity.bonuses.mountedKnightUpkeep ?? baseUpkeep;
+    case 'warships':
+      return deity.bonuses.warshipUpkeep ?? baseUpkeep;
+    case 'agitator':
+      return deity.bonuses.agitatorUpkeep ?? baseUpkeep;
+    default:
+      return baseUpkeep;
+  }
 }
 
 const LEVY_UPKEEP_PER_UNIT = 0.25;
@@ -216,6 +332,10 @@ export default function Faction() {
   const [role, setRole] = useState(null);
   const [myFactionId, setMyFactionId] = useState(null);
 
+  // Faction name editing states
+  const [isEditingFactionName, setIsEditingFactionName] = useState(false);
+  const [editedFactionName, setEditedFactionName] = useState("");
+
   // Authorization check
   useEffect(() => {
     const auth = getAuthState();
@@ -243,7 +363,7 @@ export default function Faction() {
   const isOwnerView = (role === "faction" && myFactionId === Number(id)) || isGM;
   const canEditAgents = isOwnerView || isGM;
 
-  /* ---------------- REGIONS ---------------- */
+  /* ---------------- REGIONS WITH DEITY BONUSES ---------------- */
 
   useEffect(() => {
     const q = query(
@@ -254,11 +374,17 @@ export default function Faction() {
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setRegions(list);
-      setEco(calculateEconomy(list));
     });
 
     return () => unsub();
   }, [id]);
+
+  // Recalculate economy when regions or patronDeity changes
+  useEffect(() => {
+    if (regions.length > 0 || patronDeity) {
+      setEco(calculateEconomy(regions, patronDeity));
+    }
+  }, [regions, patronDeity]);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "regions"), (snap) => {
@@ -286,11 +412,27 @@ export default function Faction() {
           patronDeity: data.patronDeity || null,
         });
         setPatronDeity(data.patronDeity || null);
+        setEditedFactionName(data.name || "");
       }
     });
 
     return () => unsub();
   }, [id]);
+
+  /* ---------------- FACTION NAME EDITING ---------------- */
+
+  async function saveFactionName() {
+    if (!isOwnerView) return;
+    const ref = doc(db, "factions", String(id));
+    await updateDoc(ref, { name: editedFactionName });
+    setIsEditingFactionName(false);
+    show("Faction Renamed", `Faction is now called "${editedFactionName || `Faction ${id}`}"`);
+  }
+
+  function cancelEditFactionName() {
+    setEditedFactionName(factionData?.name || "");
+    setIsEditingFactionName(false);
+  }
 
   /* ---------------- ARMIES ---------------- */
 
@@ -409,7 +551,8 @@ export default function Faction() {
   const agentsCount = agents.length;
 
   const totalAgentUpkeep = agents.reduce((sum, a) => {
-    return sum + (AGENT_UPKEEP[a.type] || 0);
+    const baseUpkeep = AGENT_UPKEEP[a.type] || 0;
+    return sum + getModifiedUpkeep(a.type, baseUpkeep, patronDeity);
   }, 0);
 
   /* ---------------- CHARACTERS ---------------- */
@@ -486,7 +629,7 @@ export default function Faction() {
     show("Patron Deity Changed", deityKey ? `Now following ${DEITIES[deityKey].name}` : "No patron deity selected");
   }
 
-  /* ---------------- ECONOMY DERIVED ---------------- */
+  /* ---------------- ECONOMY DERIVED WITH DEITY BONUSES ---------------- */
 
   const totalHsgUnits = useMemo(
     () =>
@@ -520,13 +663,13 @@ export default function Faction() {
       armies.reduce(
         (sum, a) =>
           sum +
-          (a.huscarls || 0) * 2 +
-          (a.dismountedKnights || 0) * 3 +
-          (a.mountedKnights || 0) * 4 +
-          (a.lightHorse || 0) * 2,
+          (a.huscarls || 0) * getModifiedUpkeep('huscarls', 2, patronDeity) +
+          (a.dismountedKnights || 0) * getModifiedUpkeep('dismountedKnights', 3, patronDeity) +
+          (a.mountedKnights || 0) * getModifiedUpkeep('mountedKnights', 4, patronDeity) +
+          (a.lightHorse || 0) * getModifiedUpkeep('lightHorse', 2, patronDeity),
         0
       ),
-    [armies]
+    [armies, patronDeity]
   );
 
   const levyUnitsTotal = totalLevyInfantryUnits + totalLevyArcherUnits;
@@ -539,7 +682,7 @@ export default function Faction() {
 
   const warships =
     factionData?.navy?.warships != null ? factionData.navy.warships : 0;
-  const navyGoldUpkeep = warships * 3;
+  const navyGoldUpkeep = warships * getModifiedUpkeep('warships', 3, patronDeity);
 
   const buildingsGold = eco?.goldPerTurn || 0;
   const manpowerNet = eco?.manpowerNet || 0;
@@ -553,6 +696,9 @@ export default function Faction() {
 
   const goldNegative = netGoldPerTurn < 0;
   const manpowerNegative = manpowerNet < 0;
+
+  // Get current deity for bonuses display
+  const deity = patronDeity ? DEITIES[patronDeity] : null;
 
   /* ---------------- AGENT MANAGEMENT ---------------- */
 
@@ -575,15 +721,18 @@ export default function Faction() {
         ? "Unnamed Agitator"
         : "Unnamed Enforcer");
 
+    // Check for Comnea agent level bonus
+    const startingLevel = (deity?.bonuses.agentStartLevel && patronDeity === 'comnea') ? 2 : 1;
+
     const agentsRef = collection(db, "agents");
     await addDoc(agentsRef, {
       factionId: Number(id),
       name,
       type,
-      level: 1,
+      level: startingLevel,
     });
 
-    show("Agent Hired", `${name} (${type}) hired.`);
+    show("Agent Hired", `${name} (${type}) hired${startingLevel > 1 ? ' at level 2' : ''}.`);
 
     setNewAgentName("");
   }
@@ -620,6 +769,9 @@ export default function Faction() {
         : agent.type === "agitator"
         ? "#b3403d"
         : "#6a8f4e";
+
+    const baseUpkeep = AGENT_UPKEEP[agent.type] || 0;
+    const modifiedUpkeep = getModifiedUpkeep(agent.type, baseUpkeep, patronDeity);
 
     return (
       <div key={agent.id} className="card" style={{ marginBottom: 12 }}>
@@ -699,7 +851,17 @@ export default function Faction() {
             </span>
 
             <span style={{ color: "#a89a7a", fontSize: 12, whiteSpace: "nowrap" }}>
-              Upkeep: {AGENT_UPKEEP[agent.type] || 0}g/turn
+              Upkeep: {baseUpkeep !== modifiedUpkeep ? (
+                <>
+                  <span style={{ textDecoration: "line-through", opacity: 0.5 }}>{baseUpkeep}</span>{" "}
+                  <span style={{ color: "#b5e8a1", fontWeight: "bold" }}>{modifiedUpkeep}</span>
+                </>
+              ) : (
+                baseUpkeep
+              )}g/turn
+              {agent.type === 'agitator' && patronDeity === 'comnea' && (
+                <span style={{ color: "#b5e8a1", fontSize: 11 }}> (Comnea)</span>
+              )}
             </span>
           </div>
         </div>
@@ -733,10 +895,18 @@ export default function Faction() {
             <p>
               Total agent upkeep: <strong>{totalAgentUpkeep}</strong>{" "}
               gold/turn
+              {patronDeity === 'comnea' && agents.some(a => a.type === 'agitator') && (
+                <span style={{ color: "#b5e8a1", fontSize: 11 }}> (Comnea bonus applied)</span>
+              )}
             </p>
             <p style={{ fontSize: 12, color: "#c7bca5" }}>
-              Spy: 1g, Agitator: 4g, Enforcer: 2g per turn.
+              Spy: 1g, Agitator: {getModifiedUpkeep('agitator', 4, patronDeity)}g, Enforcer: 2g per turn.
             </p>
+            {patronDeity === 'comnea' && (
+              <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                New agents start at level 2
+              </p>
+            )}
           </div>
         </div>
 
@@ -744,7 +914,9 @@ export default function Faction() {
           <div className="card" style={{ marginTop: 8, marginBottom: 16 }}>
             <h3 style={{ marginTop: 0 }}>Hire New Agent</h3>
             <p style={{ fontSize: 12, color: "#c7bca5", marginTop: 0, marginBottom: 12 }}>
-              Agents are managed at the table. GM and players can adjust levels and locations. Upkeep: Spy 1g, Agitator 4g, Enforcer 2g per turn.
+              Agents are managed at the table. GM and players can adjust levels and locations. 
+              Upkeep: Spy 1g, Agitator {getModifiedUpkeep('agitator', 4, patronDeity)}g, Enforcer 2g per turn.
+              {patronDeity === 'comnea' && <span style={{ color: "#b5e8a1" }}> New agents start at level 2!</span>}
             </p>
             <form
               onSubmit={handleHireAgent}
@@ -766,7 +938,7 @@ export default function Faction() {
                   }}
                 >
                   <option value="spy">Spy (1g)</option>
-                  <option value="agitator">Agitator (4g)</option>
+                  <option value="agitator">Agitator ({getModifiedUpkeep('agitator', 4, patronDeity)}g)</option>
                   <option value="enforcer">Enforcer (2g)</option>
                 </select>
               </label>
@@ -942,6 +1114,37 @@ export default function Faction() {
               </p>
             )}
           </div>
+          
+          {deity && eco?.deityBonuses && (
+            <div className="summary-card">
+              <h3>Active Regional Bonuses</h3>
+              {deity.bonuses.riverGold && eco.deityBonuses.riverRegions > 0 && (
+                <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                  +{eco.deityBonuses.riverRegions} gold from {eco.deityBonuses.riverRegions} river region(s)
+                </p>
+              )}
+              {deity.bonuses.coastalGold && eco.deityBonuses.coastalRegions > 0 && (
+                <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                  +{eco.deityBonuses.coastalRegions * 2} gold from {eco.deityBonuses.coastalRegions} coastal region(s)
+                </p>
+              )}
+              {deity.bonuses.mountainGold && eco.deityBonuses.mountainRegions > 0 && (
+                <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                  +{eco.deityBonuses.mountainRegions * 3} gold from {eco.deityBonuses.mountainRegions} mountain region(s)
+                </p>
+              )}
+              {deity.bonuses.mountainHillsGold && (eco.deityBonuses.mountainRegions + eco.deityBonuses.hillsRegions) > 0 && (
+                <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                  +{eco.deityBonuses.mountainRegions + eco.deityBonuses.hillsRegions} gold from mountains/hills
+                </p>
+              )}
+              {deity.bonuses.mineGold && eco.deityBonuses.mines > 0 && (
+                <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                  +{eco.deityBonuses.mines} gold from {eco.deityBonuses.mines} mine(s)
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {isOwnerView && (
@@ -1013,6 +1216,12 @@ export default function Faction() {
                 * Character bonuses are shown in green on character cards
               </p>
             )}
+            
+            {currentDeity.bonuses.armyMovement && (
+              <p style={{ fontSize: 12, color: "#a89a7a", marginTop: 8 }}>
+                * Army movement bonus is handled at the table
+              </p>
+            )}
           </div>
         )}
       </>
@@ -1078,25 +1287,91 @@ export default function Faction() {
         )}
       </div>
 
-      <h1
-        style={{
-          fontFamily: "Georgia, serif",
-          color: "#eaddc0",
-          fontSize: 30,
-          marginBottom: 10,
-          marginTop: 0,
-          wordBreak: "break-word",
-        }}
-      >
-        {factionName}
-      </h1>
+      {/* Faction Name with Edit */}
+      {isEditingFactionName ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <input
+            type="text"
+            value={editedFactionName}
+            onChange={(e) => setEditedFactionName(e.target.value)}
+            placeholder={`Faction ${id}`}
+            autoFocus
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              border: "1px solid #5e4934",
+              background: "#1d1610",
+              color: "#eaddc0",
+              fontFamily: "Georgia, serif",
+              fontSize: 28,
+              fontWeight: "bold",
+              flex: 1,
+              maxWidth: 400,
+            }}
+          />
+          <button
+            onClick={saveFactionName}
+            className="small"
+            style={{
+              padding: "8px 16px",
+              background: "#4a6642",
+              borderColor: "#5a7a52",
+            }}
+          >
+            ✓ Save
+          </button>
+          <button
+            onClick={cancelEditFactionName}
+            className="small"
+            style={{ padding: "8px 16px" }}
+          >
+            ✕ Cancel
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+          <h1
+            style={{
+              fontFamily: "Georgia, serif",
+              color: "#eaddc0",
+              fontSize: 30,
+              margin: 0,
+              wordBreak: "break-word",
+            }}
+          >
+            {factionName}
+          </h1>
+          {isOwnerView && (
+            <button
+              onClick={() => {
+                setEditedFactionName(factionData?.name || "");
+                setIsEditingFactionName(true);
+              }}
+              className="small"
+              style={{
+                padding: "6px 12px",
+                background: "transparent",
+                border: "1px solid #5e4934",
+              }}
+              title="Edit faction name"
+            >
+              ✏️ Edit
+            </button>
+          )}
+        </div>
+      )}
 
-      {/* Top econ summary */}
+      {/* Top econ summary with deity bonuses */}
       <div className="summary-row">
         <div className="summary-card">
           <h3>Buildings Economy</h3>
           <p>
             Gold/turn: <strong>{buildingsGold}</strong>
+            {deity && eco?.deityBonuses && (
+              <span style={{ fontSize: 11, color: "#b5e8a1" }}>
+                {" "}(includes deity bonuses)
+              </span>
+            )}
           </p>
           <p title="If negative, shut off manpower-consuming buildings until ≥ 0.">
             Manpower/turn:{" "}
@@ -1110,6 +1385,11 @@ export default function Faction() {
           <h3>HSG & Capacity</h3>
           <p>
             HSG cap: <strong>{hsgCap}</strong>
+            {deity?.bonuses.keepHSG && (
+              <span style={{ fontSize: 11, color: "#b5e8a1" }}>
+                {" "}(Umara bonus)
+              </span>
+            )}
           </p>
           <p>
             HSG used:{" "}
@@ -1124,10 +1404,25 @@ export default function Faction() {
 
         <div className="summary-card">
           <h3>Net Gold</h3>
-          <p>HSG upkeep: {hsgGoldUpkeep}</p>
+          <p>
+            HSG upkeep: {hsgGoldUpkeep}
+            {(deity?.bonuses.huscarlUpkeep || deity?.bonuses.dismountedKnightUpkeep || deity?.bonuses.mountedKnightUpkeep) && (
+              <span style={{ fontSize: 11, color: "#b5e8a1" }}> *</span>
+            )}
+          </p>
           <p>Levies upkeep: {levyGoldUpkeep}</p>
-          <p>Warship upkeep: {navyGoldUpkeep}</p>
-          <p>Agent upkeep: {totalAgentUpkeep}</p>
+          <p>
+            Warship upkeep: {navyGoldUpkeep}
+            {deity?.bonuses.warshipUpkeep && (
+              <span style={{ fontSize: 11, color: "#b5e8a1" }}> *</span>
+            )}
+          </p>
+          <p>
+            Agent upkeep: {totalAgentUpkeep}
+            {deity?.bonuses.agitatorUpkeep && (
+              <span style={{ fontSize: 11, color: "#b5e8a1" }}> *</span>
+            )}
+          </p>
           <p title="If negative, disband units first; then shut off gold-costing buildings.">
             Net Gold/turn:{" "}
             <strong className={goldNegative ? "warning" : "ok"}>
@@ -1146,12 +1441,18 @@ export default function Faction() {
           </p>
           <p>
             Levy Inf Potential: <strong>{levyInfPotential}</strong>
+            {deity?.bonuses.levyInfantryCF && (
+              <span style={{ fontSize: 11, color: "#b5e8a1" }}> (+1 CF)</span>
+            )}
           </p>
           <p>
             Levy Inf Raised: <strong>{totalLevyInfantryUnits} units</strong>
           </p>
           <p>
             Levy Arch Potential: <strong>{levyArchPotential}</strong>
+            {deity?.bonuses.farmLevyBonus && (
+              <span style={{ fontSize: 11, color: "#b5e8a1" }}> (Altaea)</span>
+            )}
           </p>
           <p>
             Levy Arch Raised: <strong>{totalLevyArcherUnits} units</strong>
@@ -1204,6 +1505,7 @@ export default function Faction() {
               eco={eco}
               role={role}
               myFactionId={myFactionId}
+              patronDeity={patronDeity}
             />
           ))}
         </>
@@ -1226,12 +1528,27 @@ export default function Faction() {
                 </div>
               )}
               <p style={{ marginTop: 6, fontSize: 12, color: "#c7bca5" }}>
-                Upkeep: 3 gold/turn per warship
+                Upkeep: {getModifiedUpkeep('warships', 3, patronDeity)} gold/turn per warship
+                {deity?.bonuses.warshipUpkeep && (
+                  <span style={{ color: "#b5e8a1" }}> (Trengar bonus)</span>
+                )}
               </p>
               <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #4c3b2a" }}>
                 <strong>Total Navy Upkeep:</strong> {navyGoldUpkeep} gold/turn
               </div>
             </div>
+            
+            {deity?.bonuses.armyMovement && (
+              <div className="summary-card">
+                <h3>Divine Movement</h3>
+                <p style={{ color: "#b5e8a1", fontSize: 14 }}>
+                  <strong>Kurimbor's Blessing:</strong> Armies can move 2 regions per turn
+                </p>
+                <p style={{ fontSize: 12, color: "#c7bca5" }}>
+                  This bonus is handled at the table
+                </p>
+              </div>
+            )}
           </div>
 
           <div
@@ -1250,6 +1567,12 @@ export default function Faction() {
               </button>
             )}
           </div>
+
+          {deity?.bonuses.levyInfantryCF && (
+            <p style={{ fontSize: 12, color: "#b5e8a1", marginBottom: 8 }}>
+              * Seyluna grants +1 Combat Factor to all Levy Infantry
+            </p>
+          )}
 
           {armies.length === 0 && (
             <p style={{ color: "#c7bca5" }}>

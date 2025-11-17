@@ -1,14 +1,15 @@
-// components/RegionCard.jsx - Update building functions to include costs
+// components/RegionCard.jsx - FULL FILE WITH DEITY COST MODIFICATIONS
 
 import { useState, useEffect } from "react";
 import { db } from "../firebase/config";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { canAddBuilding, getTerrainInfo, TERRAIN_TYPES } from "../config/terrainRules";
 import { BUILDING_RULES } from "../config/buildingRules";
+import { DEITIES } from "../config/religionRules";
 
 const SETTLEMENTS = ["Village", "Town", "City"];
 
-export default function RegionCard({ region, eco, role, myFactionId }) {
+export default function RegionCard({ region, eco, role, myFactionId, patronDeity }) {
   const [expanded, setExpanded] = useState(false);
   const [notes, setNotes] = useState(region.notes || "");
   const [regionName, setRegionName] = useState(region.name || "");
@@ -30,6 +31,9 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
   const terrain = region.terrain || TERRAIN_TYPES.PLAINS;
   const terrainInfo = getTerrainInfo(terrain);
 
+  // Get deity for cost modifications
+  const deity = patronDeity ? DEITIES[patronDeity] : null;
+
   const count = (name) => upgrades.filter((u) => u === name).length;
   const countGroup = (names) => upgrades.filter((u) => names.includes(u)).length;
 
@@ -38,6 +42,18 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
     if (upgrades.includes("Town")) return "Town";
     if (upgrades.includes("Village")) return "Village";
     return "None";
+  }
+
+  // Helper function to get modified building cost
+  function getModifiedBuildingCost(buildingType, baseCost) {
+    if (!deity) return baseCost;
+    
+    // Umara: Fortifications cost half
+    if ((buildingType === 'Keep' || buildingType === 'Castle') && deity.bonuses.fortificationCost) {
+      return Math.round(baseCost * deity.bonuses.fortificationCost);
+    }
+    
+    return baseCost;
   }
 
   function getSettlementRequirements(type) {
@@ -114,7 +130,6 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
         requirements.reasons.unshift(`Need ${missingReqs.join(', ')}`);
       }
       
-      const cost = current === "Village" ? BUILDING_RULES.Town.buildCost : BUILDING_RULES.Village.buildCost + BUILDING_RULES.Town.buildCost;
       requirements.reasons.push(`Cost: ${BUILDING_RULES.Town.buildCost}g${current === "Village" ? " (upgrade)" : ""}`);
     }
 
@@ -296,8 +311,13 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
         return;
       }
       
-      const cost = BUILDING_RULES.Keep.buildCost;
-      if (!window.confirm(`Build Keep for ${cost} gold?`)) return;
+      const baseCost = BUILDING_RULES.Keep.buildCost;
+      const cost = getModifiedBuildingCost('Keep', baseCost);
+      const costMessage = cost < baseCost 
+        ? `Build Keep for ${cost} gold? (Normally ${baseCost}g - Umara's blessing)`
+        : `Build Keep for ${cost} gold?`;
+      
+      if (!window.confirm(costMessage)) return;
       
       newUps.push("Keep");
     }
@@ -316,8 +336,13 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
       return;
     }
     
-    const cost = BUILDING_RULES.Castle.buildCost;
-    if (!window.confirm(`Upgrade Keep to Castle for ${cost} gold?`)) return;
+    const baseCost = BUILDING_RULES.Castle.buildCost;
+    const cost = getModifiedBuildingCost('Castle', baseCost);
+    const costMessage = cost < baseCost 
+      ? `Upgrade Keep to Castle for ${cost} gold? (Normally ${baseCost}g - Umara's blessing)`
+      : `Upgrade Keep to Castle for ${cost} gold?`;
+    
+    if (!window.confirm(costMessage)) return;
     
     await updateUpgrades([...upgrades, "Castle"]);
   }
@@ -372,6 +397,12 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
   const villageReqs = getSettlementRequirements("Village");
   const townReqs = getSettlementRequirements("Town");
   const cityReqs = getSettlementRequirements("City");
+
+  // Get fortification costs with deity modifiers
+  const keepBaseCost = BUILDING_RULES.Keep.buildCost;
+  const keepCost = getModifiedBuildingCost('Keep', keepBaseCost);
+  const castleBaseCost = BUILDING_RULES.Castle.buildCost;
+  const castleCost = getModifiedBuildingCost('Castle', castleBaseCost);
 
   return (
     <div className="card" style={{ marginBottom: "12px" }}>
@@ -747,24 +778,59 @@ export default function RegionCard({ region, eco, role, myFactionId }) {
             </div>
 
             <div>
-              <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>Fortifications</h3>
+              <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>
+                Fortifications
+                {deity?.bonuses.fortificationCost && (
+                  <span style={{ fontSize: "12px", color: "#b5e8a1", fontWeight: "normal" }}>
+                    {" "}(Umara: 50% cost)
+                  </span>
+                )}
+              </h3>
               <div style={{ fontSize: "14px", marginBottom: "4px" }}>
                 Keep: <strong>{hasKeep ? "Yes" : "No"}</strong>
+                {deity?.bonuses.keepHSG && hasKeep && (
+                  <span style={{ fontSize: "12px", color: "#b5e8a1" }}>
+                    {" "}(+{deity.bonuses.keepHSG} HSG capacity)
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: "14px", marginBottom: "4px" }}>
                 Castle: <strong>{hasCastle ? "Yes" : "No"}</strong>
+                {deity?.bonuses.castleHSG && hasCastle && (
+                  <span style={{ fontSize: "12px", color: "#b5e8a1" }}>
+                    {" "}(+{deity.bonuses.castleHSG} HSG capacity)
+                  </span>
+                )}
               </div>
               {isOwner && (
                 <div style={{ display: "flex", gap: "3px", flexWrap: "wrap", marginTop: "6px" }}>
                   {!hasKeep && (
                     <button className="small" onClick={toggleKeep} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                      Add Keep ({BUILDING_RULES.Keep.buildCost}g)
+                      Add Keep (
+                      {keepCost < keepBaseCost ? (
+                        <>
+                          <span style={{ textDecoration: "line-through", opacity: 0.5 }}>{keepBaseCost}</span>
+                          <span style={{ color: "#b5e8a1", fontWeight: "bold" }}> {keepCost}</span>
+                        </>
+                      ) : (
+                        keepBaseCost
+                      )}
+                      g)
                     </button>
                   )}
                   {hasKeep && !hasCastle && (
                     <>
                       <button className="small" onClick={upgradeToCastle} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                        → Castle ({BUILDING_RULES.Castle.buildCost}g)
+                        → Castle (
+                        {castleCost < castleBaseCost ? (
+                          <>
+                            <span style={{ textDecoration: "line-through", opacity: 0.5 }}>{castleBaseCost}</span>
+                            <span style={{ color: "#b5e8a1", fontWeight: "bold" }}> {castleCost}</span>
+                          </>
+                        ) : (
+                          castleBaseCost
+                        )}
+                        g)
                       </button>
                       <button className="small" onClick={toggleKeep} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
                         Remove Keep

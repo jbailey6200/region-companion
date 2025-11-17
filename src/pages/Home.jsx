@@ -1,6 +1,10 @@
+// pages/Home.jsx - FULL FILE WITH CUSTOM FACTION NAMES
+
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { verifyPin, getAuthState, setAuthState, clearAuthState } from "../utils/auth";
+import { db } from "../firebase/config";
+import { collection, onSnapshot } from "firebase/firestore";
 
 export default function Home() {
   const [authState, setAuthStateLocal] = useState(null);
@@ -8,6 +12,7 @@ export default function Home() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
+  const [factionNames, setFactionNames] = useState({});
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -15,6 +20,21 @@ export default function Home() {
     if (auth) {
       setAuthStateLocal(auth);
     }
+  }, []);
+
+  // Load faction names
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "factions"), (snap) => {
+      const names = {};
+      snap.docs.forEach((doc) => {
+        const data = doc.data();
+        const factionId = doc.id;
+        names[factionId] = data.name || `Faction ${factionId}`;
+      });
+      setFactionNames(names);
+    });
+
+    return () => unsub();
   }, []);
 
   async function handlePinSubmit(e) {
@@ -74,6 +94,10 @@ export default function Home() {
     setError("");
   }
 
+  function getFactionName(factionId) {
+    return factionNames[String(factionId)] || `Faction ${factionId}`;
+  }
+
   // If authenticated, show logged-in view
   if (authState) {
     return (
@@ -86,7 +110,7 @@ export default function Home() {
             <strong>
               {authState.role === "gm"
                 ? "Game Master"
-                : `Faction ${authState.factionId}`}
+                : getFactionName(authState.factionId)}
             </strong>
           </p>
           <button onClick={handleLogout}>Logout</button>
@@ -109,9 +133,16 @@ export default function Home() {
             <div className="summary-row">
               {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => (
                 <div key={f} className="summary-card">
-                  <h3>Faction {f}</h3>
+                  <h3 style={{ 
+                    fontSize: "16px",
+                    marginBottom: "12px",
+                    wordBreak: "break-word",
+                    lineHeight: "1.3"
+                  }}>
+                    {getFactionName(f)}
+                  </h3>
                   <button onClick={() => navigate(`/faction/${f}`)}>
-                    View Faction {f}
+                    View {getFactionName(f)}
                   </button>
                 </div>
               ))}
@@ -142,11 +173,11 @@ export default function Home() {
             onClick={handleBackToSelection}
             style={{ marginBottom: "16px" }}
           >
-            ← Back to Selection
+            ← Back to Selection
           </button>
 
           <h2 style={{ marginTop: 0 }}>
-            {selectedRole === "gm" ? "Game Master" : `Faction ${selectedRole}`}
+            {selectedRole === "gm" ? "Game Master" : getFactionName(selectedRole)}
           </h2>
           
           <p style={{ color: "#c7bca5", fontSize: "14px" }}>
@@ -241,9 +272,17 @@ export default function Home() {
             <button 
               key={f} 
               onClick={() => handleRoleSelection(f)}
-              style={{ padding: "12px" }}
+              style={{ 
+                padding: "12px",
+                wordBreak: "break-word",
+                minHeight: "50px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                lineHeight: "1.2"
+              }}
             >
-              Faction {f}
+              {getFactionName(f)}
             </button>
           ))}
         </div>

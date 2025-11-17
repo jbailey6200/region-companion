@@ -1,3 +1,5 @@
+// pages/GMPanel.jsx - FULL FILE WITH CUSTOM FACTION NAMES
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase/config";
@@ -61,11 +63,27 @@ export default function GMPanel() {
   const [name, setName] = useState("");
   const [owner, setOwner] = useState(1);
   const [role, setRole] = useState(null);
+  const [factionNames, setFactionNames] = useState({});
   const navigate = useNavigate();
 
   useEffect(() => {
     const r = localStorage.getItem("role");
     if (r) setRole(r);
+  }, []);
+
+  // Load faction names
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "factions"), (snap) => {
+      const names = {};
+      snap.docs.forEach((doc) => {
+        const data = doc.data();
+        const factionId = doc.id;
+        names[factionId] = data.name || `Faction ${factionId}`;
+      });
+      setFactionNames(names);
+    });
+
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -108,11 +126,15 @@ export default function GMPanel() {
     });
   }
 
+  function getFactionName(factionId) {
+    return factionNames[String(factionId)] || `Faction ${factionId}`;
+  }
+
   if (role !== "gm") {
     return (
       <div className="container">
         <button onClick={() => navigate("/")} style={{ marginBottom: "10px" }}>
-          ← Home
+          ← Home
         </button>
         <h1>GM Panel</h1>
         <p>You are not in GM mode. Switch to GM on the home screen.</p>
@@ -123,7 +145,7 @@ export default function GMPanel() {
   return (
     <div className="container">
       <button onClick={() => navigate("/")} style={{ marginBottom: "10px" }}>
-        ← Home
+        ← Home
       </button>
 
       <h1>GM Panel</h1>
@@ -170,7 +192,7 @@ export default function GMPanel() {
           >
             {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => (
               <option key={f} value={f}>
-                {`Faction ${f}`}
+                {getFactionName(f)}
               </option>
             ))}
           </select>
@@ -194,7 +216,14 @@ export default function GMPanel() {
           const eco = factionSummaries[f];
           return (
             <div key={f} className="summary-card">
-              <h3>Faction {f}</h3>
+              <h3 style={{
+                fontSize: "16px",
+                marginBottom: "8px",
+                wordBreak: "break-word",
+                lineHeight: "1.3"
+              }}>
+                {getFactionName(f)}
+              </h3>
               <p>
                 Gold/turn: <strong>{eco.goldPerTurn}</strong>
               </p>
@@ -245,7 +274,7 @@ export default function GMPanel() {
             >
               {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => (
                 <option key={f} value={f}>
-                  Faction {f}
+                  {getFactionName(f)}
                 </option>
               ))}
             </select>

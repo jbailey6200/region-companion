@@ -1,15 +1,34 @@
-// components/ArmyCard.jsx - UPDATED FILE
+// components/ArmyCard.jsx - FULL FILE WITH DEITY UPKEEP DISPLAY
 
 import React, { useState, useRef, useEffect } from "react";
 import { HSG_UNITS } from "../config/buildingRules";
 import { DEITIES } from "../config/religionRules";
+
+// Helper function for modified upkeep
+function getModifiedUpkeep(unitType, baseUpkeep, patronDeity) {
+  const deity = patronDeity ? DEITIES[patronDeity] : null;
+  if (!deity) return baseUpkeep;
+  
+  switch(unitType) {
+    case 'huscarls':
+      return deity.bonuses.huscarlUpkeep ?? baseUpkeep;
+    case 'dismountedKnights':
+      return deity.bonuses.dismountedKnightUpkeep ?? baseUpkeep;
+    case 'mountedKnights':
+      return deity.bonuses.mountedKnightUpkeep ?? baseUpkeep;
+    case 'lightHorse':
+      return baseUpkeep; // No deity modifies light horse
+    default:
+      return baseUpkeep;
+  }
+}
 
 export default function ArmyCard({
   army,
   isOwner,
   characters = [],
   allArmies = [],
-  patronDeity, // ADD THIS
+  patronDeity,
   onChangeUnit,
   onChangeLevy,
   onChangeField,
@@ -94,6 +113,38 @@ export default function ArmyCard({
   const leadershipBonus = deity?.bonuses.characterLeadership || 0;
   const prowessBonus = deity?.bonuses.characterProwess || 0;
 
+  // Calculate unit upkeeps with deity bonuses
+  const unitData = [
+    { 
+      key: "huscarls", 
+      label: "Huscarls", 
+      baseUpkeep: 2,
+      count: huscarls
+    },
+    { 
+      key: "dismountedKnights", 
+      label: "Dismounted Knights", 
+      baseUpkeep: 3,
+      count: dismountedKnights
+    },
+    { 
+      key: "mountedKnights", 
+      label: "Mounted Knights", 
+      baseUpkeep: 4,
+      count: mountedKnights
+    },
+    { 
+      key: "lightHorse", 
+      label: "Light Horse", 
+      baseUpkeep: 2,
+      count: lightHorse
+    },
+  ].map(u => ({
+    ...u,
+    modifiedUpkeep: getModifiedUpkeep(u.key, u.baseUpkeep, patronDeity),
+    hasBonus: getModifiedUpkeep(u.key, u.baseUpkeep, patronDeity) !== u.baseUpkeep
+  }));
+
   return (
     <div className="card">
       <div
@@ -142,7 +193,24 @@ export default function ArmyCard({
             }}
           />
 
-          {/* Commanders Display - Now under army name */}
+          {/* Movement bonus indicator */}
+          {deity?.bonuses.armyMovement && (
+            <div
+              style={{
+                marginTop: 6,
+                padding: "4px 8px",
+                background: "#1a2f1a",
+                borderRadius: 4,
+                border: "1px solid #2a4f2a",
+                fontSize: 12,
+                color: "#b5e8a1",
+              }}
+            >
+              ⚡ Movement: 2 regions per turn (Kurimbor's blessing)
+            </div>
+          )}
+
+          {/* Commanders Display */}
           {commanderObjects.length > 0 && (
             <div
               style={{
@@ -388,15 +456,42 @@ export default function ArmyCard({
 
       <h3 style={{ fontSize: 14, marginTop: 4, marginBottom: 6 }}>
         Household Guard
+        {(deity?.bonuses.huscarlUpkeep || deity?.bonuses.dismountedKnightUpkeep || deity?.bonuses.mountedKnightUpkeep) && (
+          <span style={{ fontSize: 11, color: "#b5e8a1", fontWeight: "normal" }}>
+            {" "}(deity bonuses active)
+          </span>
+        )}
       </h3>
       <div className="army-grid">
-        {HSG_UNITS.map((u) => {
-          const count = army[u.key] || 0;
+        {unitData.map((u) => {
           return (
             <div key={u.key} className="army-item">
               <div className="army-item-header">
                 <span>{u.label}</span>
-                <span>{u.upkeep}g/unit</span>
+                <span>
+                  {u.hasBonus ? (
+                    <>
+                      <span style={{ textDecoration: "line-through", opacity: 0.5 }}>
+                        {u.baseUpkeep}
+                      </span>{" "}
+                      <span style={{ color: "#b5e8a1", fontWeight: "bold" }}>
+                        {u.modifiedUpkeep}
+                      </span>
+                    </>
+                  ) : (
+                    u.baseUpkeep
+                  )}
+                  g/unit
+                  {u.hasBonus && u.key === 'huscarls' && patronDeity === 'erigan' && (
+                    <span style={{ fontSize: 10, color: "#b5e8a1" }}> (Erigan)</span>
+                  )}
+                  {u.hasBonus && u.key === 'dismountedKnights' && patronDeity === 'durren' && (
+                    <span style={{ fontSize: 10, color: "#b5e8a1" }}> (Durren)</span>
+                  )}
+                  {u.hasBonus && u.key === 'mountedKnights' && patronDeity === 'durren' && (
+                    <span style={{ fontSize: 10, color: "#b5e8a1" }}> (Durren)</span>
+                  )}
+                </span>
               </div>
               <div className="army-controls">
                 <button
@@ -405,7 +500,7 @@ export default function ArmyCard({
                 >
                   -
                 </button>
-                <div className="army-count">{count}</div>
+                <div className="army-count">{u.count}</div>
                 <button
                   disabled={!isOwner}
                   onClick={() => onChangeUnit(id, u.key, 1)}
@@ -420,11 +515,21 @@ export default function ArmyCard({
 
       <h3 style={{ fontSize: 14, marginTop: 10, marginBottom: 6 }}>
         Levies in this Army
+        {deity?.bonuses.levyInfantryCF && (
+          <span style={{ fontSize: 11, color: "#b5e8a1", fontWeight: "normal" }}>
+            {" "}(Seyluna: Infantry +1 CF)
+          </span>
+        )}
       </h3>
       <div className="army-grid">
         <div className="army-item">
           <div className="army-item-header">
-            <span>Levy Infantry (units of 10)</span>
+            <span>
+              Levy Infantry (units of 10)
+              {deity?.bonuses.levyInfantryCF && (
+                <span style={{ fontSize: 10, color: "#b5e8a1" }}> +1 CF</span>
+              )}
+            </span>
             <span>1g raise, 0.25g/turn</span>
           </div>
           <div className="army-controls">

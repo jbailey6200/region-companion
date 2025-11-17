@@ -80,7 +80,7 @@ export const TERRAIN_RULES = {
     maxSettlements: 1,
     canHaveKeep: true,
     canHaveCastle: true,
-    bonuses: ["Great for farms", "Trade routes (+1 gold)", "Any settlement type"],
+    bonuses: ["Great for farms", "Any settlement type"],
     penalties: [],
   },
   
