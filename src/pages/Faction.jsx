@@ -1,3 +1,5 @@
+// pages/Faction.jsx - FULL FILE WITH RELIGION TAB
+
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useMemo } from "react";
 import { db } from "../firebase/config";
@@ -15,8 +17,10 @@ import {
 } from "firebase/firestore";
 import RegionCard from "../components/RegionCard";
 import ArmyCard from "../components/ArmyCard";
+import CharacterCard from "../components/CharacterCard";
 import { getAuthState } from "../utils/auth";
 import { BUILDING_RULES } from "../config/buildingRules";
+import { DEITIES } from "../config/religionRules";
 
 /* -------------------------------------------------------
    TOAST SYSTEM
@@ -202,6 +206,13 @@ export default function Faction() {
   const [newAgentType, setNewAgentType] = useState("spy");
   const [newAgentName, setNewAgentName] = useState("");
 
+  const [characters, setCharacters] = useState([]);
+  const [isAddingCharacter, setIsAddingCharacter] = useState(false);
+  const [newCharFirstName, setNewCharFirstName] = useState("");
+  const [newCharLastName, setNewCharLastName] = useState("");
+
+  const [patronDeity, setPatronDeity] = useState(null);
+
   const [role, setRole] = useState(null);
   const [myFactionId, setMyFactionId] = useState(null);
 
@@ -272,7 +283,9 @@ export default function Faction() {
         setFactionData({
           navy: { warships: 0, ...(data.navy || {}) },
           name: data.name || "",
+          patronDeity: data.patronDeity || null,
         });
+        setPatronDeity(data.patronDeity || null);
       }
     });
 
@@ -303,6 +316,7 @@ export default function Faction() {
       lightHorse: 0,
       levyInfantry: 0,
       levyArchers: 0,
+      commanders: [],
     });
   }
 
@@ -361,6 +375,12 @@ export default function Faction() {
     await updateDoc(ref, { [field]: next });
   }
 
+  async function updateArmyCommanders(armyId, commanderIds) {
+    if (!isOwnerView) return;
+    const ref = doc(db, "factions", String(id), "armies", armyId);
+    await updateDoc(ref, { commanders: commanderIds });
+  }
+
   /* ---------------- NAVY ---------------- */
 
   async function changeWarships(delta) {
@@ -391,6 +411,80 @@ export default function Faction() {
   const totalAgentUpkeep = agents.reduce((sum, a) => {
     return sum + (AGENT_UPKEEP[a.type] || 0);
   }, 0);
+
+  /* ---------------- CHARACTERS ---------------- */
+
+  useEffect(() => {
+    const charactersRef = collection(db, "factions", String(id), "characters");
+    const unsub = onSnapshot(charactersRef, (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setCharacters(list);
+    });
+    return () => unsub();
+  }, [id]);
+
+  function generateRandomStats() {
+    return {
+      leadership: Math.floor(Math.random() * 10) + 1,
+      prowess: Math.floor(Math.random() * 10) + 1,
+      stewardship: Math.floor(Math.random() * 10) + 1,
+      intrigue: Math.floor(Math.random() * 10) + 1,
+    };
+  }
+
+  async function handleAddCharacter(e) {
+    e.preventDefault();
+    if (!isOwnerView) return;
+    
+    if (!newCharFirstName.trim() && !newCharLastName.trim()) {
+      show("Name Required", "Please enter at least a first or last name.");
+      return;
+    }
+
+    const charactersRef = collection(db, "factions", String(id), "characters");
+    const stats = generateRandomStats();
+    
+    await addDoc(charactersRef, {
+      firstName: newCharFirstName.trim() || "Unnamed",
+      lastName: newCharLastName.trim() || "",
+      ...stats,
+      courtPosition: "",
+      createdAt: new Date(),
+    });
+
+    show(
+      "Character Added",
+      `${newCharFirstName} ${newCharLastName} has joined your house!`
+    );
+
+    setNewCharFirstName("");
+    setNewCharLastName("");
+    setIsAddingCharacter(false);
+  }
+
+  async function updateCharacterField(charId, field, value) {
+    if (!isOwnerView && !isGM) return;
+    const ref = doc(db, "factions", String(id), "characters", charId);
+    await updateDoc(ref, { [field]: value });
+  }
+
+  async function deleteCharacter(charId) {
+    if (!isOwnerView && !isGM) return;
+    if (!window.confirm("Remove this character from your house?")) return;
+    const ref = doc(db, "factions", String(id), "characters", charId);
+    await deleteDoc(ref);
+    show("Character Removed", "The character has been removed from your house.");
+  }
+
+  /* ---------------- RELIGION ---------------- */
+
+  async function changePatronDeity(deityKey) {
+    if (!isOwnerView) return;
+    const ref = doc(db, "factions", String(id));
+    await updateDoc(ref, { patronDeity: deityKey || null });
+    setPatronDeity(deityKey || null);
+    show("Patron Deity Changed", deityKey ? `Now following ${DEITIES[deityKey].name}` : "No patron deity selected");
+  }
 
   /* ---------------- ECONOMY DERIVED ---------------- */
 
@@ -715,6 +809,216 @@ export default function Faction() {
     );
   }
 
+  function renderCharactersTab() {
+    return (
+      <>
+        <div className="summary-row">
+          <div className="summary-card">
+            <h3>House Members</h3>
+            <p>
+              Total Characters: <strong>{characters.length}</strong>
+            </p>
+            <p style={{ fontSize: 12, color: "#c7bca5" }}>
+              Track your noble house members and their abilities
+            </p>
+          </div>
+        </div>
+
+        {isOwnerView && (
+          <>
+            {!isAddingCharacter ? (
+              <button
+                onClick={() => setIsAddingCharacter(true)}
+                className="green"
+                style={{ marginBottom: 16 }}
+              >
+                + Add House Member
+              </button>
+            ) : (
+              <div className="card" style={{ marginBottom: 16 }}>
+                <h3 style={{ marginTop: 0 }}>New House Member</h3>
+                <p style={{ fontSize: 12, color: "#c7bca5", marginBottom: 12 }}>
+                  Stats will be randomly generated (1-10 scale)
+                </p>
+                <form
+                  onSubmit={handleAddCharacter}
+                  style={{ display: "flex", gap: 10, flexWrap: "wrap" }}
+                >
+                  <input
+                    type="text"
+                    value={newCharFirstName}
+                    onChange={(e) => setNewCharFirstName(e.target.value)}
+                    placeholder="First name"
+                    autoFocus
+                    style={{
+                      flex: "1 1 150px",
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #5e4934",
+                      background: "#1d1610",
+                      color: "#f3eadc",
+                      fontFamily: "Georgia, serif",
+                      fontSize: 16,
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={newCharLastName}
+                    onChange={(e) => setNewCharLastName(e.target.value)}
+                    placeholder="Last name"
+                    style={{
+                      flex: "1 1 150px",
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #5e4934",
+                      background: "#1d1610",
+                      color: "#f3eadc",
+                      fontFamily: "Georgia, serif",
+                      fontSize: 16,
+                    }}
+                  />
+                  <button type="submit" style={{ margin: 0 }}>
+                    Create Character
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingCharacter(false);
+                      setNewCharFirstName("");
+                      setNewCharLastName("");
+                    }}
+                    style={{ margin: 0 }}
+                  >
+                    Cancel
+                  </button>
+                </form>
+              </div>
+            )}
+          </>
+        )}
+
+        {characters.length === 0 && (
+          <p style={{ color: "#c7bca5" }}>
+            No house members yet. Add characters to build your noble house.
+          </p>
+        )}
+
+        {characters
+          .sort((a, b) => {
+            // Sort by creation date, newest first
+            const aDate = a.createdAt?.seconds || 0;
+            const bDate = b.createdAt?.seconds || 0;
+            return bDate - aDate;
+          })
+          .map((character) => (
+            <CharacterCard
+              key={character.id}
+              character={character}
+              isOwner={isOwnerView}
+              isGM={isGM}
+              patronDeity={patronDeity}
+              onUpdateField={updateCharacterField}
+              onDelete={deleteCharacter}
+            />
+          ))}
+      </>
+    );
+  }
+
+  function renderReligionTab() {
+    const currentDeity = patronDeity ? DEITIES[patronDeity] : null;
+    
+    return (
+      <>
+        <div className="summary-row">
+          <div className="summary-card">
+            <h3>Patron Deity</h3>
+            <p>
+              Current: <strong>{currentDeity ? currentDeity.name : "None"}</strong>
+            </p>
+            {currentDeity && (
+              <p style={{ fontSize: 12, color: "#c7bca5" }}>
+                {currentDeity.title}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {isOwnerView && (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <h3 style={{ marginTop: 0 }}>Select Patron Deity</h3>
+            <p style={{ fontSize: 12, color: "#c7bca5", marginBottom: 12 }}>
+              Choose a deity to receive faction-wide bonuses
+            </p>
+            
+            <select 
+              value={patronDeity || ''} 
+              onChange={(e) => changePatronDeity(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px",
+                borderRadius: 8,
+                border: "1px solid #5e4934",
+                background: "#1d1610",
+                color: "#f4efe4",
+                fontFamily: "Georgia, serif",
+                fontSize: 16,
+              }}
+            >
+              <option value="">No Patron Deity</option>
+              <optgroup label="Adiri (New Gods)">
+                {Object.entries(DEITIES)
+                  .filter(([_, d]) => d.type === "adiri")
+                  .map(([key, deity]) => (
+                    <option key={key} value={key}>
+                      {deity.name} - {deity.title}
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="Adaar (Old Gods)">
+                {Object.entries(DEITIES)
+                  .filter(([_, d]) => d.type === "adaar")
+                  .map(([key, deity]) => (
+                    <option key={key} value={key}>
+                      {deity.name} - {deity.title}
+                    </option>
+                  ))}
+              </optgroup>
+            </select>
+          </div>
+        )}
+
+        {currentDeity && (
+          <div className="card">
+            <h2 style={{ fontSize: 20, marginTop: 0, marginBottom: 12 }}>
+              {currentDeity.name}
+            </h2>
+            <p style={{ color: "#d1b26b", marginBottom: 12 }}>
+              {currentDeity.title}
+            </p>
+            
+            <h3 style={{ fontSize: 16, marginBottom: 8 }}>Divine Bonuses:</h3>
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              {currentDeity.description.map((bonus, idx) => (
+                <li key={idx} style={{ marginBottom: 6, color: "#b5e8a1" }}>
+                  {bonus}
+                </li>
+              ))}
+            </ul>
+            
+            {(currentDeity.bonuses.characterLeadership || 
+              currentDeity.bonuses.characterProwess || 
+              currentDeity.bonuses.characterIntrigue) && (
+              <p style={{ fontSize: 12, color: "#a89a7a", marginTop: 12 }}>
+                * Character bonuses are shown in green on character cards
+              </p>
+            )}
+          </div>
+        )}
+      </>
+    );
+  }
+
   const factionName =
     factionData?.name && factionData.name.trim() !== ""
       ? factionData.name
@@ -749,7 +1053,7 @@ export default function Faction() {
       >
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           <button onClick={() => navigate("/")} style={{ marginBottom: 0 }}>
-            ← Home
+            ← Home
           </button>
           {isGM && (
             <button onClick={() => navigate("/gm")} className="small">
@@ -794,7 +1098,7 @@ export default function Faction() {
           <p>
             Gold/turn: <strong>{buildingsGold}</strong>
           </p>
-          <p title="If negative, shut off manpower-consuming buildings until â‰¥ 0.">
+          <p title="If negative, shut off manpower-consuming buildings until ≥ 0.">
             Manpower/turn:{" "}
             <strong className={manpowerNegative ? "warning" : "ok"}>
               {manpowerNet}
@@ -875,6 +1179,18 @@ export default function Faction() {
         >
           Agents
         </button>
+        <button
+          className={`tab ${activeTab === "characters" ? "active" : ""}`}
+          onClick={() => setActiveTab("characters")}
+        >
+          Characters
+        </button>
+        <button
+          className={`tab ${activeTab === "religion" ? "active" : ""}`}
+          onClick={() => setActiveTab("religion")}
+        >
+          Religion
+        </button>
       </div>
 
       {/* Regions tab */}
@@ -949,10 +1265,14 @@ export default function Faction() {
                 key={army.id}
                 army={army}
                 isOwner={isOwnerView}
+                characters={characters}
+                allArmies={armies}
+                patronDeity={patronDeity}
                 onChangeUnit={changeArmyUnit}
                 onChangeLevy={changeArmyLevy}
                 onChangeField={changeArmyField}
                 onDelete={deleteArmy}
+                onUpdateCommanders={updateArmyCommanders}
               />
             ))}
         </>
@@ -960,6 +1280,12 @@ export default function Faction() {
 
       {/* Agents tab */}
       {activeTab === "agents" && renderAgentsTab()}
+
+      {/* Characters tab */}
+      {activeTab === "characters" && renderCharactersTab()}
+
+      {/* Religion tab */}
+      {activeTab === "religion" && renderReligionTab()}
     </div>
   );
 }
