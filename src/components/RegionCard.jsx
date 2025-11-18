@@ -115,7 +115,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
         requirements.allowed = false;
         requirements.reasons.push(`Need ${requiredFarms} farms (have ${farmEq})`);
       } else {
-        requirements.reasons.push(`✓ ${requiredFarms} farms`);
+        requirements.reasons.push(`Has ${requiredFarms} farms`);
       }
       
       requirements.reasons.push(`Cost: ${BUILDING_RULES.Village.buildCost}g`);
@@ -136,14 +136,14 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
         requirements.allowed = false;
         missingReqs.push(`farms: ${farmEq}/${requiredFarms}`);
       } else {
-        requirements.reasons.push(`✓ ${requiredFarms} farms`);
+        requirements.reasons.push(`Has ${requiredFarms} farms`);
       }
       
       if (mineEq < requiredMines) {
         requirements.allowed = false;
         missingReqs.push(`mines: ${mineEq}/${requiredMines}`);
       } else {
-        requirements.reasons.push(`✓ ${requiredMines} mine${requiredMines > 1 ? 's' : ''}`);
+        requirements.reasons.push(`Has ${requiredMines} mine${requiredMines > 1 ? 's' : ''}`);
       }
       
       if (missingReqs.length > 0) {
@@ -163,14 +163,14 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
         requirements.allowed = false;
         missingReqs.push(`farms: ${farmEq}/${requiredFarms}`);
       } else {
-        requirements.reasons.push(`✓ ${requiredFarms} farms`);
+        requirements.reasons.push(`Has ${requiredFarms} farms`);
       }
       
       if (mineEq < requiredMines) {
         requirements.allowed = false;
         missingReqs.push(`mines: ${mineEq}/${requiredMines}`);
       } else {
-        requirements.reasons.push(`✓ ${requiredMines} mines`);
+        requirements.reasons.push(`Has ${requiredMines} mines`);
       }
       
       if (missingReqs.length > 0) {
@@ -180,7 +180,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
       requirements.reasons.push(`Cost: ${BUILDING_RULES.City.buildCost}g (upgrade)`);
     }
 
-    requirements.tooltip = requirements.reasons.join(" • ");
+    requirements.tooltip = requirements.reasons.join("  ·  ");
     return requirements;
   }
 
@@ -412,7 +412,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
   if (mine2Count) summaryParts.push(`${mine2Count} Mine2`);
   if (hasKeep) summaryParts.push("Keep");
   if (hasCastle) summaryParts.push("Castle");
-  const summaryText = summaryParts.length ? summaryParts.join(" • ") : "No buildings";
+  const summaryText = summaryParts.length ? summaryParts.join("  ·  ") : "No buildings";
 
   const villageReqs = getSettlementRequirements("Village");
   const townReqs = getSettlementRequirements("Town");
@@ -484,7 +484,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                     borderColor: "#5a7a52",
                   }}
                 >
-                  ✓
+                  Save
                 </button>
                 <button
                   onClick={cancelEditName}
@@ -495,7 +495,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                     minHeight: "28px",
                   }}
                 >
-                  ✕
+                  Cancel
                 </button>
               </div>
             ) : (
@@ -518,7 +518,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                   }}
                   title="Edit region name"
                 >
-                  ✏️
+                  Edit
                 </button>
               </>
             )}
@@ -542,7 +542,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
             </span>
           </div>
           <p style={{ margin: 0, fontSize: "14px" }}>
-            <strong>Owner:</strong> {getFactionName(region.owner)} • <strong>Settlement:</strong> {settlement}
+            <strong>Owner:</strong> {getFactionName(region.owner)}  ·  <strong>Settlement:</strong> {settlement}
           </p>
           {!expanded && (
             <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#aaa" }}>
@@ -742,7 +742,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                   )}
                   {terrainInfo.penalties?.length > 0 && (
                     <div style={{ color: "#f97373" }}>
-                      − {terrainInfo.penalties.join(", ")}
+                      - {terrainInfo.penalties.join(", ")}
                     </div>
                   )}
                 </div>
@@ -834,7 +834,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                   {hasKeep && !hasCastle && (
                     <>
                       <button className="small" onClick={upgradeToCastle} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                        → Castle (
+                        Upgrade to Castle (
                         {castleCost < castleBaseCost ? (
                           <>
                             <span style={{ textDecoration: "line-through", opacity: 0.5 }}>{castleBaseCost}</span>

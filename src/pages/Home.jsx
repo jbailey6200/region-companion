@@ -1,4 +1,4 @@
-// pages/Home.jsx - FULL FILE WITH CUSTOM FACTION NAMES
+// pages/Home.jsx - FULL FILE WITH LARGER CRESTS FROM PUBLIC FOLDER
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -6,13 +6,26 @@ import { verifyPin, getAuthState, setAuthState, clearAuthState } from "../utils/
 import { db } from "../firebase/config";
 import { collection, onSnapshot } from "firebase/firestore";
 
+// Default crests - Place images in public folder
+// Example: public/stanford.png, public/holmes.png, etc.
+const DEFAULT_CRESTS = {
+  "1": null,     // Place image in public/stanford.png
+  "2": "/holmes.png",       // Place image in public/holmes.png
+  "3": null,               // Add crest: public/faction3.png
+  "4": null,               // Add crest: public/faction4.png
+  "5": null,               // Add crest: public/faction5.png
+  "6": null,               // Add crest: public/faction6.png
+  "7": "/stanford.png",
+  "8": null,             // Add crest: public/faction8.png
+};
+
 export default function Home() {
   const [authState, setAuthStateLocal] = useState(null);
   const [selectedRole, setSelectedRole] = useState(null); // "gm" | faction number
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
-  const [factionNames, setFactionNames] = useState({});
+  const [factionData, setFactionData] = useState({});
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -25,13 +38,17 @@ export default function Home() {
   // Load faction names
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "factions"), (snap) => {
-      const names = {};
+      const data = {};
       snap.docs.forEach((doc) => {
-        const data = doc.data();
+        const factionInfo = doc.data();
         const factionId = doc.id;
-        names[factionId] = data.name || `Faction ${factionId}`;
+        data[factionId] = {
+          name: factionInfo.name || `Faction ${factionId}`,
+          // Always use default crests from public folder
+          crest: DEFAULT_CRESTS[factionId] || null,
+        };
       });
-      setFactionNames(names);
+      setFactionData(data);
     });
 
     return () => unsub();
@@ -94,8 +111,11 @@ export default function Home() {
     setError("");
   }
 
-  function getFactionName(factionId) {
-    return factionNames[String(factionId)] || `Faction ${factionId}`;
+  function getFactionInfo(factionId) {
+    return factionData[String(factionId)] || {
+      name: `Faction ${factionId}`,
+      crest: DEFAULT_CRESTS[String(factionId)] || null,
+    };
   }
 
   // If authenticated, show logged-in view
@@ -110,7 +130,7 @@ export default function Home() {
             <strong>
               {authState.role === "gm"
                 ? "Game Master"
-                : getFactionName(authState.factionId)}
+                : getFactionInfo(authState.factionId).name}
             </strong>
           </p>
           <button onClick={handleLogout}>Logout</button>
@@ -131,21 +151,50 @@ export default function Home() {
             
             <h3>Factions</h3>
             <div className="summary-row">
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => (
-                <div key={f} className="summary-card">
-                  <h3 style={{ 
-                    fontSize: "16px",
-                    marginBottom: "12px",
-                    wordBreak: "break-word",
-                    lineHeight: "1.3"
-                  }}>
-                    {getFactionName(f)}
-                  </h3>
-                  <button onClick={() => navigate(`/faction/${f}`)}>
-                    View {getFactionName(f)}
-                  </button>
-                </div>
-              ))}
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => {
+                const info = getFactionInfo(f);
+                return (
+                  <div key={f} className="summary-card">
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      marginBottom: "12px",
+                    }}>
+                      {info.crest && (
+                        <img
+                          src={info.crest}
+                          alt={`${info.name} crest`}
+                          style={{
+                            width: 50,
+                            height: 50,
+                            objectFit: "contain",
+                            borderRadius: 6,
+                            border: "1px solid #4c3b2a",
+                            padding: 4,
+                            background: "#1a1410",
+                          }}
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      )}
+                      <h3 style={{ 
+                        fontSize: "16px",
+                        margin: 0,
+                        wordBreak: "break-word",
+                        lineHeight: "1.3",
+                        flex: 1,
+                      }}>
+                        {info.name}
+                      </h3>
+                    </div>
+                    <button onClick={() => navigate(`/faction/${f}`)}>
+                      View {info.name}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </>
         ) : (
@@ -164,6 +213,8 @@ export default function Home() {
 
   // If role is selected, show PIN entry
   if (selectedRole) {
+    const info = selectedRole === "gm" ? null : getFactionInfo(selectedRole);
+    
     return (
       <div className="container">
         <h1>Realm Companion</h1>
@@ -173,11 +224,36 @@ export default function Home() {
             onClick={handleBackToSelection}
             style={{ marginBottom: "16px" }}
           >
-            ← Back to Selection
+            ← Back to Selection
           </button>
 
+          {selectedRole !== "gm" && info?.crest && (
+            <div style={{
+              display: "flex",
+              justifyContent: "center",
+              marginBottom: "16px",
+            }}>
+              <img
+                src={info.crest}
+                alt={`${info.name} crest`}
+                style={{
+                  width: 100,
+                  height: 100,
+                  objectFit: "contain",
+                  borderRadius: 8,
+                  border: "2px solid #4c3b2a",
+                  padding: 10,
+                  background: "#1a1410",
+                }}
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                }}
+              />
+            </div>
+          )}
+
           <h2 style={{ marginTop: 0 }}>
-            {selectedRole === "gm" ? "Game Master" : getFactionName(selectedRole)}
+            {selectedRole === "gm" ? "Game Master" : info?.name}
           </h2>
           
           <p style={{ color: "#c7bca5", fontSize: "14px" }}>
@@ -240,7 +316,7 @@ export default function Home() {
     );
   }
 
-  // Default: show role selection
+  // Default: show role selection with larger crests
   return (
     <div className="container">
       <h1>Realm Companion</h1>
@@ -267,24 +343,50 @@ export default function Home() {
         </div>
 
         <h3 style={{ fontSize: "16px", marginBottom: "12px" }}>Factions</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "8px" }}>
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => (
-            <button 
-              key={f} 
-              onClick={() => handleRoleSelection(f)}
-              style={{ 
-                padding: "12px",
-                wordBreak: "break-word",
-                minHeight: "50px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                lineHeight: "1.2"
-              }}
-            >
-              {getFactionName(f)}
-            </button>
-          ))}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "8px" }}>
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => {
+            const info = getFactionInfo(f);
+            return (
+              <button 
+                key={f} 
+                onClick={() => handleRoleSelection(f)}
+                style={{ 
+                  padding: "12px 8px",
+                  minHeight: "80px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "10px",
+                  lineHeight: "1.2",
+                  position: "relative",
+                  flexDirection: "row",
+                }}
+              >
+                {info.crest && (
+                  <img
+                    src={info.crest}
+                    alt=""
+                    style={{
+                      width: 40,
+                      height: 40,
+                      objectFit: "contain",
+                      flexShrink: 0,
+                    }}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                )}
+                <span style={{ 
+                  wordBreak: "break-word",
+                  flex: 1,
+                  textAlign: info.crest ? "left" : "center",
+                }}>
+                  {info.name}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
