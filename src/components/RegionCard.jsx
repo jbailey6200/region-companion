@@ -1,8 +1,8 @@
-// components/RegionCard.jsx - FULL FILE WITH DEITY COST MODIFICATIONS
+// components/RegionCard.jsx - FULL FILE WITH CUSTOM FACTION NAMES
 
 import { useState, useEffect } from "react";
 import { db } from "../firebase/config";
-import { doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, collection, onSnapshot } from "firebase/firestore";
 import { canAddBuilding, getTerrainInfo, TERRAIN_TYPES } from "../config/terrainRules";
 import { BUILDING_RULES } from "../config/buildingRules";
 import { DEITIES } from "../config/religionRules";
@@ -14,6 +14,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
   const [notes, setNotes] = useState(region.notes || "");
   const [regionName, setRegionName] = useState(region.name || "");
   const [isEditingName, setIsEditingName] = useState(false);
+  const [factionNames, setFactionNames] = useState({});
 
   useEffect(() => {
     setNotes(region.notes || "");
@@ -22,6 +23,21 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
   useEffect(() => {
     setRegionName(region.name || "");
   }, [region.name]);
+
+  // Load faction names
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "factions"), (snap) => {
+      const names = {};
+      snap.docs.forEach((doc) => {
+        const data = doc.data();
+        const factionId = doc.id;
+        names[factionId] = data.name || `Faction ${factionId}`;
+      });
+      setFactionNames(names);
+    });
+
+    return () => unsub();
+  }, []);
 
   const upgrades = region.upgrades || [];
 
@@ -36,6 +52,10 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
 
   const count = (name) => upgrades.filter((u) => u === name).length;
   const countGroup = (names) => upgrades.filter((u) => names.includes(u)).length;
+
+  function getFactionName(factionId) {
+    return factionNames[String(factionId)] || `Faction ${factionId}`;
+  }
 
   function getSettlement() {
     if (upgrades.includes("City")) return "City";
@@ -522,7 +542,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
             </span>
           </div>
           <p style={{ margin: 0, fontSize: "14px" }}>
-            <strong>Owner:</strong> Faction {region.owner} • <strong>Settlement:</strong> {settlement}
+            <strong>Owner:</strong> {getFactionName(region.owner)} • <strong>Settlement:</strong> {settlement}
           </p>
           {!expanded && (
             <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#aaa" }}>
@@ -692,7 +712,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                 >
                   {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => (
                     <option key={f} value={f}>
-                      Faction {f}
+                      {getFactionName(f)}
                     </option>
                   ))}
                 </select>
@@ -778,14 +798,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
             </div>
 
             <div>
-              <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>
-                Fortifications
-                {deity?.bonuses.fortificationCost && (
-                  <span style={{ fontSize: "12px", color: "#b5e8a1", fontWeight: "normal" }}>
-                    {" "}(Umara: 50% cost)
-                  </span>
-                )}
-              </h3>
+              <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>Fortifications</h3>
               <div style={{ fontSize: "14px", marginBottom: "4px" }}>
                 Keep: <strong>{hasKeep ? "Yes" : "No"}</strong>
                 {deity?.bonuses.keepHSG && hasKeep && (
