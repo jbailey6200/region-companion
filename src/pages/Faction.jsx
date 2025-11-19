@@ -16,11 +16,13 @@ import {
 import RegionCard from "../components/RegionCard";
 import ArmyCard from "../components/ArmyCard";
 import CharacterCard from "../components/CharacterCard";
+import Court from "../components/Court";
 // import Map from "../components/Map";
 import { getAuthState } from "../utils/auth";
 import { BUILDING_RULES } from "../config/buildingRules";
 import { DEITIES } from "../config/religionRules";
 import { TERRAIN_TYPES } from "../config/terrainRules";
+import { getCourtBonuses, getMaxArmyCap, canRaiseAgentWithCourt } from "../config/courtPositions";
 
 /* -------------------------------------------------------
    TOAST SYSTEM
@@ -319,6 +321,9 @@ export default function Faction() {
 
   const [factionCrest, setFactionCrest] = useState(null);
 
+  // NEW: Court positions state
+  const [courtPositions, setCourtPositions] = useState([]);
+
   useEffect(() => {
     const auth = getAuthState();
 
@@ -360,11 +365,32 @@ export default function Faction() {
     return () => unsub();
   }, [id]);
 
+  // NEW: Load court positions
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "court"), (snap) => {
+      const positions = snap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setCourtPositions(positions);
+    });
+    return () => unsub();
+  }, []);
+
+  // NEW: Get court bonuses for current faction
+  const courtBonuses = useMemo(() => {
+    return getCourtBonuses(courtPositions, Number(id));
+  }, [courtPositions, id]);
+
   useEffect(() => {
     if (regions.length > 0 || patronDeity) {
-      setEco(calculateEconomy(regions, patronDeity));
+      let baseEco = calculateEconomy(regions, patronDeity);
+      // Add court bonuses
+      baseEco.goldPerTurn += courtBonuses.gold;
+      baseEco.courtBonuses = courtBonuses.positions;
+      setEco(baseEco);
     }
-  }, [regions, patronDeity]);
+  }, [regions, patronDeity, courtBonuses]);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "regions"), (snap) => {
@@ -426,25 +452,53 @@ export default function Faction() {
     setIsEditingFactionName(false);
   }
 
-  useEffect(() => {
-    const armiesRef = collection(
-      db,
-      "factions",
-      String(id),
-      "armies"
-    );
-    const unsub = onSnapshot(armiesRef, (snap) => {
-      const list = snap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      }));
-      setArmies(list);
+useEffect(() => {
+  const armiesRef = collection(
+    db,
+    "factions",
+    String(id),
+    "armies"
+  );
+  const unsub = onSnapshot(armiesRef, (snap) => {
+    const list = snap.docs.map((d) => ({
+      id: d.id,
+      // Provide default values for all expected fields
+      name: "",
+      location: "",
+      huscarls: 0,
+      dismountedKnights: 0,
+      mountedKnights: 0,
+      lightHorse: 0,
+      levyInfantry: 0,
+      levyArchers: 0,
+      commanders: [],
+      deleted: false,
+      // Override with actual data
+      ...d.data(),
+    }));
+    // Filter out any armies that might have bad data
+    const validArmies = list.filter(army => {
+      // Ensure commanders is always an array
+      if (!Array.isArray(army.commanders)) {
+        army.commanders = [];
+      }
+      return true; // Keep all armies now that we've fixed them
     });
-    return () => unsub();
-  }, [id]);
+    setArmies(validArmies);
+  });
+  return () => unsub();
+}, [id]);
 
   async function addArmy() {
     if (!isOwnerView) return;
+    
+    // Check army cap with court bonus
+    const maxArmies = getMaxArmyCap(3, courtBonuses);
+    if (armies.filter(a => !a.deleted).length >= maxArmies) {
+      show("Army Cap Reached", `You can maintain a maximum of ${maxArmies} armies${maxArmies > 3 ? ' (including Lord Marshal bonus)' : ''}.`);
+      return;
+    }
+    
     const armiesRef = collection(
       db,
       "factions",
@@ -726,99 +780,14 @@ export default function Faction() {
     );
   }
 
-  const totalHsgUnits = useMemo(
-    () =>
-      armies.reduce(
-        (sum, a) =>
-          sum +
-          (a.huscarls || 0) +
-          (a.dismountedKnights || 0) +
-          (a.mountedKnights || 0) +
-          (a.lightHorse || 0),
-        0
-      ),
-    [armies]
-  );
-
-  const hsgCap = eco?.hsgCap || 0;
-  const hsgUsed = totalHsgUnits * 10;
-  const overHsgCap = hsgUsed > hsgCap;
-
-  const hsgGoldUpkeep = useMemo(
-    () =>
-      armies.reduce(
-        (sum, a) =>
-          sum +
-          (a.huscarls || 0) *
-            getModifiedUpkeep(
-              "huscarls",
-              2,
-              patronDeity
-            ) +
-          (a.dismountedKnights || 0) *
-            getModifiedUpkeep(
-              "dismountedKnights",
-              3,
-              patronDeity
-            ) +
-          (a.mountedKnights || 0) *
-            getModifiedUpkeep(
-              "mountedKnights",
-              4,
-              patronDeity
-            ) +
-          (a.lightHorse || 0) *
-            getModifiedUpkeep("lightHorse", 2, patronDeity),
-        0
-      ),
-    [armies, patronDeity]
-  );
-
-  const levyUnitsTotal =
-    totalLevyInfantryUnits + totalLevyArcherUnits;
-  const levyGoldUpkeep = Math.round(
-    levyUnitsTotal * LEVY_UPKEEP_PER_UNIT
-  );
-
-  const levyInfPotential = eco?.levyInfantry || 0;
-  const levyArchPotential = eco?.levyArchers || 0;
-
-  const levyInfPotentialUnits = Math.floor(
-    levyInfPotential / 10
-  );
-  const levyArchPotentialUnits = Math.floor(
-    levyArchPotential / 10
-  );
-
-  const warships =
-    factionData?.navy?.warships != null
-      ? factionData.navy.warships
-      : 0;
-
-  const navyGoldUpkeep =
-    warships *
-    getModifiedUpkeep("warships", 3, patronDeity);
-
-  const buildingsGold = eco?.goldPerTurn || 0;
-  const manpowerNet = eco?.manpowerNet || 0;
-
-  const netGoldPerTurn =
-    buildingsGold -
-    hsgGoldUpkeep -
-    levyGoldUpkeep -
-    navyGoldUpkeep -
-    totalAgentUpkeep;
-
-  const goldNegative = netGoldPerTurn < 0;
-  const manpowerNegative = manpowerNet < 0;
-
-  const deity = patronDeity ? DEITIES[patronDeity] : null;
-
   async function handleHireAgent(e) {
     e.preventDefault();
     if (!canEditAgents) return;
 
-    if (agentsCount >= maxAgents) {
+    // Check agent cap with court bonus
+    const canHire = canRaiseAgentWithCourt(agentsCount, maxAgents, courtBonuses);
+    
+    if (!canHire) {
       show(
         "Agent Cap Reached",
         `You've met your agent cap (${agentsCount}/${maxAgents})!`
@@ -1053,6 +1022,11 @@ export default function Faction() {
   }
 
   function renderAgentsTab() {
+    const hasSpymaster = courtBonuses.positions.some(
+      p => p.position === 'Lord Spymaster'
+    );
+    const effectiveAgentCap = hasSpymaster ? `${maxAgents} + 1 free agent` : maxAgents;
+
     return (
       <>
         <div className="summary-row">
@@ -1061,7 +1035,7 @@ export default function Faction() {
             <p>
               Agents:{" "}
               <strong>
-                {agentsCount} / {maxAgents}
+                {agentsCount} / {effectiveAgentCap}
               </strong>
             </p>
             <p>
@@ -1069,6 +1043,11 @@ export default function Faction() {
               <strong>{townCount}</strong>, Cities:{" "}
               <strong>{cityCount}</strong>
             </p>
+            {hasSpymaster && (
+              <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                Lord Spymaster grants +1 free agent
+              </p>
+            )}
             <p
               style={{
                 fontSize: 12,
@@ -1242,7 +1221,7 @@ export default function Faction() {
 
               <button
                 type="submit"
-                disabled={agentsCount >= maxAgents}
+                disabled={!canRaiseAgentWithCourt(agentsCount, maxAgents, courtBonuses)}
                 style={{ margin: 0 }}
               >
                 Hire Agent
@@ -1414,6 +1393,7 @@ export default function Faction() {
               isOwner={isOwnerView}
               isGM={isGM}
               patronDeity={patronDeity}
+              courtBonuses={courtBonuses}
               onUpdateField={updateCharacterField}
               onDelete={deleteCharacter}
             />
@@ -1708,6 +1688,94 @@ export default function Faction() {
     );
   }
 
+  const totalHsgUnits = useMemo(
+    () =>
+      armies.reduce(
+        (sum, a) =>
+          sum +
+          (a.huscarls || 0) +
+          (a.dismountedKnights || 0) +
+          (a.mountedKnights || 0) +
+          (a.lightHorse || 0),
+        0
+      ),
+    [armies]
+  );
+
+  const hsgCap = eco?.hsgCap || 0;
+  const hsgUsed = totalHsgUnits * 10;
+  const overHsgCap = hsgUsed > hsgCap;
+
+  const hsgGoldUpkeep = useMemo(
+    () =>
+      armies.reduce(
+        (sum, a) =>
+          sum +
+          (a.huscarls || 0) *
+            getModifiedUpkeep(
+              "huscarls",
+              2,
+              patronDeity
+            ) +
+          (a.dismountedKnights || 0) *
+            getModifiedUpkeep(
+              "dismountedKnights",
+              3,
+              patronDeity
+            ) +
+          (a.mountedKnights || 0) *
+            getModifiedUpkeep(
+              "mountedKnights",
+              4,
+              patronDeity
+            ) +
+          (a.lightHorse || 0) *
+            getModifiedUpkeep("lightHorse", 2, patronDeity),
+        0
+      ),
+    [armies, patronDeity]
+  );
+
+  const levyUnitsTotal =
+    totalLevyInfantryUnits + totalLevyArcherUnits;
+  const levyGoldUpkeep = Math.round(
+    levyUnitsTotal * LEVY_UPKEEP_PER_UNIT
+  );
+
+  const levyInfPotential = eco?.levyInfantry || 0;
+  const levyArchPotential = eco?.levyArchers || 0;
+
+  const levyInfPotentialUnits = Math.floor(
+    levyInfPotential / 10
+  );
+  const levyArchPotentialUnits = Math.floor(
+    levyArchPotential / 10
+  );
+
+  const warships =
+    factionData?.navy?.warships != null
+      ? factionData.navy.warships
+      : 0;
+
+  const navyGoldUpkeep =
+    warships *
+    getModifiedUpkeep("warships", 3, patronDeity);
+
+  const buildingsGold = eco?.goldPerTurn || 0;
+  const manpowerNet = eco?.manpowerNet || 0;
+
+  const netGoldPerTurn =
+    buildingsGold -
+    hsgGoldUpkeep -
+    levyGoldUpkeep -
+    navyGoldUpkeep -
+    totalAgentUpkeep;
+
+  const goldNegative = netGoldPerTurn < 0;
+  const manpowerNegative = manpowerNet < 0;
+
+  const deity = patronDeity ? DEITIES[patronDeity] : null;
+
   const factionName =
     factionData?.name && factionData.name.trim() !== ""
       ? factionData.name
@@ -1720,6 +1788,9 @@ export default function Faction() {
       </div>
     );
   }
+
+  // Get the army cap
+  const maxArmyCap = getMaxArmyCap(3, courtBonuses);
 
   return (
     <div className="container">
@@ -1940,6 +2011,17 @@ export default function Faction() {
                 (includes deity bonuses)
               </span>
             )}
+            {courtBonuses.gold > 0 && (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "#8B008B",
+                }}
+              >
+                {" "}
+                (includes +{courtBonuses.gold} court)
+              </span>
+            )}
           </p>
           <p title="If negative, shut off manpower-consuming buildings until >= 0.">
             Manpower/turn:{" "}
@@ -2038,6 +2120,18 @@ export default function Faction() {
               </span>
             )}
           </p>
+          {courtBonuses.positions.length > 0 && (
+            <>
+              <p style={{ borderTop: "1px solid #4c3b2a", paddingTop: 4, marginTop: 4, fontSize: 12, color: "#8B008B" }}>
+                Court Bonuses:
+              </p>
+              {courtBonuses.positions.map((pos, idx) => (
+                <p key={idx} style={{ fontSize: 11, color: "#8B008B", marginLeft: 10, margin: "2px 0 2px 10px" }}>
+                  {pos.icon} {pos.name}: +{pos.goldBonus}
+                </p>
+              ))}
+            </>
+          )}
           <p title="If negative, disband units first; then shut off gold-costing buildings.">
             Net Gold/turn:{" "}
             <strong
@@ -2147,8 +2241,14 @@ export default function Faction() {
         >
           Religion
         </button>
-
-        {/* ❌ MAP TAB REMOVED */}
+        <button
+          className={`tab ${
+            activeTab === "court" ? "active" : ""
+          }`}
+          onClick={() => setActiveTab("court")}
+        >
+          High Court
+        </button>
       </div>
 
       {/* REGIONS TAB */}
@@ -2231,6 +2331,18 @@ export default function Faction() {
               </div>
             </div>
 
+            {courtBonuses.positions.some(p => p.position === 'Lord Marshal') && (
+              <div className="summary-card">
+                <h3>Army Capacity</h3>
+                <p style={{ color: "#8B008B", fontSize: 14 }}>
+                  <strong>Lord Marshal Bonus:</strong> Can maintain up to {maxArmyCap} armies
+                </p>
+                <p style={{ fontSize: 12, color: "#c7bca5" }}>
+                  Current armies: {armies.filter(a => !a.deleted).length} / {maxArmyCap}
+                </p>
+              </div>
+            )}
+
             {deity?.bonuses.armyMovement && (
               <div className="summary-card">
                 <h3>Divine Movement</h3>
@@ -2272,12 +2384,13 @@ export default function Faction() {
                 margin: 0,
               }}
             >
-              Armies
+              Armies ({armies.filter(a => !a.deleted).length}/{maxArmyCap})
             </h2>
             {isOwnerView && (
               <button
                 className="green"
                 onClick={addArmy}
+                disabled={armies.filter(a => !a.deleted).length >= maxArmyCap}
               >
                 + Raise New Army
               </button>
@@ -2314,6 +2427,7 @@ export default function Faction() {
                 characters={characters}
                 allArmies={armies}
                 patronDeity={patronDeity}
+                courtBonuses={courtBonuses}
                 onChangeUnit={changeArmyUnit}
                 onChangeLevy={changeArmyLevy}
                 onChangeField={changeArmyField}
@@ -2335,7 +2449,21 @@ export default function Faction() {
       {activeTab === "religion" &&
         renderReligionTab()}
 
-      {/* ❌ MAP RENDER REMOVED */}
+      {/* COURT TAB */}
+{activeTab === "court" && (
+  <Court 
+    isGM={isGM}
+    myFactionId={Number(id)}
+    factionNames={allRegions.reduce((acc, r) => {
+      const factionId = String(r.owner);
+      if (!acc[factionId]) {
+        acc[factionId] = factionData?.name || `Faction ${factionId}`;
+      }
+      return acc;
+    }, {})}
+    patronDeity={patronDeity}  // Add this line
+  />
+)}
     </div>
   );
 }

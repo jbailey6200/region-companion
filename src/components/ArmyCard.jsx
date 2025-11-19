@@ -1,4 +1,4 @@
-// components/ArmyCard.jsx - FULL FILE WITH DEITY UPKEEP DISPLAY
+// components/ArmyCard.jsx - FIXED VERSION
 
 import React, { useState, useRef, useEffect } from "react";
 import { HSG_UNITS } from "../config/buildingRules";
@@ -29,6 +29,7 @@ export default function ArmyCard({
   characters = [],
   allArmies = [],
   patronDeity,
+  courtBonuses,
   onChangeUnit,
   onChangeLevy,
   onChangeField,
@@ -240,49 +241,70 @@ export default function ArmyCard({
                   gap: 8,
                 }}
               >
-                {commanderObjects.map((cmd) => (
-                  <div
-                    key={cmd.id}
-                    style={{
-                      padding: "4px 8px",
-                      background: "#241b15",
-                      borderRadius: 4,
-                      border: "1px solid #4c3b2a",
-                      fontSize: 12,
-                    }}
-                  >
-                    <div style={{ fontWeight: "bold", marginBottom: 2 }}>
-                      {cmd.firstName || "Unnamed"} {cmd.lastName || ""}
-                    </div>
+                {commanderObjects.map((cmd) => {
+                  const wieldsmercy = courtBonuses?.prowessBonus?.[cmd.id] === 6;
+                  const mercyBonus = wieldsmercy ? 6 : 0;
+                  const totalProwessBonus = prowessBonus + mercyBonus;
+                  
+                  return (
                     <div
+                      key={cmd.id}
                       style={{
-                        display: "flex",
-                        gap: 10,
-                        fontSize: 11,
-                        color: "#c7bca5",
+                        padding: "4px 8px",
+                        background: "#241b15",
+                        borderRadius: 4,
+                        border: "1px solid #4c3b2a",
+                        fontSize: 12,
                       }}
                     >
-                      <span>
-                        <span style={{ color: "#d1b26b" }}>Lead:</span>{" "}
-                        {cmd.leadership || 1}
-                        {leadershipBonus > 0 && (
-                          <span style={{ color: "#b5e8a1", fontWeight: "bold" }}>
-                            {" "}(+{leadershipBonus})
+                      <div style={{ fontWeight: "bold", marginBottom: 2 }}>
+                        {cmd.firstName || "Unnamed"} {cmd.lastName || ""}
+                        {wieldsmercy && (
+                          <span style={{ 
+                            color: "#FFD700", 
+                            fontSize: "11px",
+                            marginLeft: "4px",
+                            fontStyle: "italic"
+                          }}>
+                            (Mercy)
                           </span>
                         )}
-                      </span>
-                      <span>
-                        <span style={{ color: "#c77d7d" }}>Prow:</span>{" "}
-                        {cmd.prowess || 1}
-                        {prowessBonus > 0 && (
-                          <span style={{ color: "#b5e8a1", fontWeight: "bold" }}>
-                            {" "}(+{prowessBonus})
-                          </span>
-                        )}
-                      </span>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          fontSize: 11,
+                          color: "#c7bca5",
+                        }}
+                      >
+                        <span>
+                          <span style={{ color: "#d1b26b" }}>Lead:</span>{" "}
+                          {cmd.leadership || 1}
+                          {leadershipBonus > 0 && (
+                            <span style={{ color: "#b5e8a1", fontWeight: "bold" }}>
+                              {" "}(+{leadershipBonus})
+                            </span>
+                          )}
+                        </span>
+                        <span>
+                          <span style={{ color: "#c77d7d" }}>Prow:</span>{" "}
+                          {cmd.prowess || 1}
+                          {prowessBonus > 0 && (
+                            <span style={{ color: "#b5e8a1", fontWeight: "bold" }}>
+                              {" "}(+{prowessBonus})
+                            </span>
+                          )}
+                          {wieldsmercy && (
+                            <span style={{ color: "#FFD700", fontWeight: "bold" }}>
+                              {" "}(+6)
+                            </span>
+                          )}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

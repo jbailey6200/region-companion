@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 import RegionCard from "../components/RegionCard";
 import { BUILDING_RULES } from "../config/buildingRules";
+import Court from "../components/Court";
 
 function calculateEconomy(regions) {
   let gold = 0;
@@ -281,6 +282,13 @@ export default function GMPanel() {
           </div>
         </div>
       ))}
+      {/* Court Management Section */}
+<h2>High Court Appointments</h2>
+<Court 
+  isGM={true}
+  myFactionId={null}  // GM sees all
+  factionNames={factionNames}
+/>
     </div>
   );
 }

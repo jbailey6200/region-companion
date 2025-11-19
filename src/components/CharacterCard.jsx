@@ -1,19 +1,39 @@
 // components/CharacterCard.jsx - UPDATED FILE
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DEITIES } from "../config/religionRules";
+import { db } from "../firebase/config";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
 
 export default function CharacterCard({
   character,
   isOwner,
   isGM,
   patronDeity,
+  courtBonuses,
   onUpdateField,
   onDelete,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [firstName, setFirstName] = useState(character.firstName || "");
   const [lastName, setLastName] = useState(character.lastName || "");
+  const [courtPosition, setCourtPosition] = useState(null);
+
+  // Check if character holds a court position
+  useEffect(() => {
+    const unsub = onSnapshot(
+      query(collection(db, "court"), 
+            where("characterId", "==", character.id)),
+      (snap) => {
+        if (!snap.empty) {
+          setCourtPosition(snap.docs[0].data());
+        } else {
+          setCourtPosition(null);
+        }
+      }
+    );
+    return () => unsub();
+  }, [character.id]);
 
   function handleSaveName() {
     onUpdateField(character.id, "firstName", firstName);
@@ -30,6 +50,13 @@ export default function CharacterCard({
   // Get deity bonuses
   const deity = patronDeity ? DEITIES[patronDeity] : null;
 
+  // Check for Mercy (Lord Justiciar wielding the sword)
+  const wieldsmercy = courtPosition?.position === 'Lord Justiciar';
+  const mercyBonus = wieldsmercy ? 6 : 0;
+
+  // Get prowess bonus from court (if this character has Mercy)
+  const courtProwessBonus = courtBonuses?.prowessBonus?.[character.id] || mercyBonus;
+
   const stats = [
     { 
       key: "leadership", 
@@ -41,7 +68,7 @@ export default function CharacterCard({
       key: "prowess", 
       label: "Prowess", 
       color: "#c77d7d",
-      bonus: deity?.bonuses.characterProwess || 0
+      bonus: (deity?.bonuses.characterProwess || 0) + courtProwessBonus
     },
     { 
       key: "stewardship", 
@@ -99,7 +126,7 @@ export default function CharacterCard({
                 className="small"
                 style={{ margin: 0, padding: "6px 12px" }}
               >
-                ✓
+                ✔
               </button>
               <button
                 onClick={handleCancelEdit}
@@ -115,6 +142,19 @@ export default function CharacterCard({
                 <h3 style={{ margin: 0, fontSize: 20 }}>
                   {firstName || "Unnamed"} {lastName || "Character"}
                 </h3>
+                {courtPosition && (
+                  <span style={{ 
+                    fontSize: "12px", 
+                    color: "#8B008B",
+                    marginLeft: "8px",
+                    padding: "2px 8px",
+                    background: "#2a2218",
+                    borderRadius: "4px",
+                    border: "1px solid #8B008B"
+                  }}>
+                    {courtPosition.position}
+                  </span>
+                )}
                 {isOwner && (
                   <button
                     onClick={() => setIsEditing(true)}
@@ -143,6 +183,23 @@ export default function CharacterCard({
             </div>
           )}
         </div>
+
+        {/* Mercy indicator for Lord Justiciar */}
+        {wieldsmercy && (
+          <div style={{ 
+            marginBottom: "12px",
+            padding: "8px",
+            background: "#2a2218",
+            borderRadius: "4px",
+            border: "1px solid #FFD700",
+            fontSize: "12px",
+            fontStyle: "italic",
+            color: "#FFD700",
+            textAlign: "center"
+          }}>
+            ⚔️ Wielder of Mercy ⚔️
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div
@@ -187,6 +244,11 @@ export default function CharacterCard({
                 {bonus > 0 && (
                   <span style={{ color: "#b5e8a1", fontSize: 14, fontWeight: "bold" }}>
                     (+{bonus})
+                    {key === "prowess" && wieldsmercy && (
+                      <span style={{ color: "#FFD700", fontSize: 11 }}>
+                        {" "}Mercy
+                      </span>
+                    )}
                   </span>
                 )}
                 {isGM && (
@@ -241,13 +303,14 @@ export default function CharacterCard({
           }}
         >
           <span style={{ color: "#a89a7a" }}>Court Position: </span>
-          <span style={{ color: "#c7bca5" }}>
-            {character.courtPosition || "None"}
+          <span style={{ color: courtPosition ? "#8B008B" : "#c7bca5", fontWeight: courtPosition ? "bold" : "normal" }}>
+            {courtPosition ? courtPosition.position : character.courtPosition || "None"}
           </span>
         </div>
 
         {/* Show deity influence if there's a bonus */}
-        {deity && (stats.some(s => s.bonus > 0)) && (
+        {deity && (stats.some(s => s.bonus > 0 && s.key !== "prowess") || 
+                   (stats.find(s => s.key === "prowess")?.bonus > courtProwessBonus)) && (
           <p style={{ fontSize: 11, color: "#a89a7a", marginTop: 8, fontStyle: "italic" }}>
             Blessed by {deity.name}
           </p>
