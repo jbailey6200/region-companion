@@ -198,65 +198,59 @@ export function getTerrainInfo(terrain) {
   };
 }
 
-/**
- * Get recommended terrain for a region based on map analysis
- * Updated to match the actual circled terrain types from the map
- */
+
 export function getTerrainFromMapPosition(code) {
-  // Based on the actual map with terrain circles:
-  // Red = Mountains, Green = Forest, Blue = Coast, Purple = River, Black = Hills
-  
-  // Coast (Blue outline - southern coastal regions)
+
   const coastRegions = [
-    'F8', 'F12', 'F13',
-    'G4', 'G5', 'G6', 'G7', 'G8',
-    'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+    'F8', 'F12', 'F13', 'F6', 
+    'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', "G11", "G12",
+    'H1', 'H3', 'H4', 'H5', 'H6',
     'I1'
   ];
   if (coastRegions.includes(code)) return TERRAIN_TYPES.COAST;
   
-  // River (Purple circles)
+  
   const riverRegions = [
-    'A4', 'A5', 'A6',
-    'B4', 'B5', 'B14',
-    'C3', 'C4',
-    'D2', 'D3', 'D4', 'D12',
-    'E2', 'E11',
-    'F2',
-    'G1'
+    'A4', 'A5', 'A6', 'A13', 
+    'B4', 'B5', 'B14', 'B6', 'B15', 'B16',
+    'C3', 'C4', 'C16',
+    'D2', 'D3', 'D4', 'D5', 'D8', 'D11', 'D12', 'D13',
+    'E2', 'E12',
+    'F2', 
+    'G1',
+    'H2'
   ];
   if (riverRegions.includes(code)) return TERRAIN_TYPES.RIVER;
   
-  // Mountains (Red circles)
+  
   const mountainRegions = [
-    'B7', 'B8', 'B9',
+    'B8', 'B9',
     'C8', 'C9', 'C10', 'C13', 'C14',
     'D6', 'D10', 'D15', 'D16',
-    'E4', 'E5', 'E14', 'E15',
+    'E4', 'E14', 'E15',
     'F4'
   ];
   if (mountainRegions.includes(code)) return TERRAIN_TYPES.MOUNTAINS;
   
-  // Forest (Green boxes/circles)
+ 
   const forestRegions = [
-    'A10', 'A11', 'A12', 'A13', 'A14', 'A15',
-    'B10', 'B11', 'B15', 'B16',
+    'A10', 'A11', 'A12', 'A14', 'A15', 'A16',
+    'B10', 'B11', 'B12', 'B17',
     'C1', 'C2', 'C11', 'C12',
-    'D8', 'D9', 'D14',
+    'D9', 'D14',
     'E1', 'E8', 'E9', 'E13',
-    'F14'
+    
   ];
   if (forestRegions.includes(code)) return TERRAIN_TYPES.FOREST;
   
-  // Hills (Black circles)
+
   const hillsRegions = [
-    'C6', 'C7',
-    'D7',
-    'F3', 'F5',
+    'B7', 'C6', 'C7', 'C15',
+    'D7', 'E3', 'E5', 'E6',
+    'F3', 'F5', 'F14', 'F15', 'F16',
     'G2'
   ];
   if (hillsRegions.includes(code)) return TERRAIN_TYPES.HILLS;
   
-  // Everything else is plains (uncircled regions)
   return TERRAIN_TYPES.PLAINS;
 }

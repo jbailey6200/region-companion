@@ -324,6 +324,9 @@ export default function Faction() {
   // NEW: Court positions state
   const [courtPositions, setCourtPositions] = useState([]);
 
+  // FIX: Add proper faction names loading for Court
+  const [allFactionNames, setAllFactionNames] = useState({});
+
   useEffect(() => {
     const auth = getAuthState();
 
@@ -364,6 +367,19 @@ export default function Faction() {
 
     return () => unsub();
   }, [id]);
+
+  // FIX: Load ALL faction names properly for Court
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "factions"), (snap) => {
+      const names = {};
+      snap.docs.forEach((doc) => {
+        const data = doc.data();
+        names[doc.id] = data.name || `Faction ${doc.id}`;
+      });
+      setAllFactionNames(names);
+    });
+    return () => unsub();
+  }, []);
 
   // NEW: Load court positions
   useEffect(() => {
@@ -452,42 +468,42 @@ export default function Faction() {
     setIsEditingFactionName(false);
   }
 
-useEffect(() => {
-  const armiesRef = collection(
-    db,
-    "factions",
-    String(id),
-    "armies"
-  );
-  const unsub = onSnapshot(armiesRef, (snap) => {
-    const list = snap.docs.map((d) => ({
-      id: d.id,
-      // Provide default values for all expected fields
-      name: "",
-      location: "",
-      huscarls: 0,
-      dismountedKnights: 0,
-      mountedKnights: 0,
-      lightHorse: 0,
-      levyInfantry: 0,
-      levyArchers: 0,
-      commanders: [],
-      deleted: false,
-      // Override with actual data
-      ...d.data(),
-    }));
-    // Filter out any armies that might have bad data
-    const validArmies = list.filter(army => {
-      // Ensure commanders is always an array
-      if (!Array.isArray(army.commanders)) {
-        army.commanders = [];
-      }
-      return true; // Keep all armies now that we've fixed them
+  useEffect(() => {
+    const armiesRef = collection(
+      db,
+      "factions",
+      String(id),
+      "armies"
+    );
+    const unsub = onSnapshot(armiesRef, (snap) => {
+      const list = snap.docs.map((d) => ({
+        id: d.id,
+        // Provide default values for all expected fields
+        name: "",
+        location: "",
+        huscarls: 0,
+        dismountedKnights: 0,
+        mountedKnights: 0,
+        lightHorse: 0,
+        levyInfantry: 0,
+        levyArchers: 0,
+        commanders: [],
+        deleted: false,
+        // Override with actual data
+        ...d.data(),
+      }));
+      // Filter out any armies that might have bad data
+      const validArmies = list.filter(army => {
+        // Ensure commanders is always an array
+        if (!Array.isArray(army.commanders)) {
+          army.commanders = [];
+        }
+        return true; // Keep all armies now that we've fixed them
+      });
+      setArmies(validArmies);
     });
-    setArmies(validArmies);
-  });
-  return () => unsub();
-}, [id]);
+    return () => unsub();
+  }, [id]);
 
   async function addArmy() {
     if (!isOwnerView) return;
@@ -2450,20 +2466,14 @@ useEffect(() => {
         renderReligionTab()}
 
       {/* COURT TAB */}
-{activeTab === "court" && (
-  <Court 
-    isGM={isGM}
-    myFactionId={Number(id)}
-    factionNames={allRegions.reduce((acc, r) => {
-      const factionId = String(r.owner);
-      if (!acc[factionId]) {
-        acc[factionId] = factionData?.name || `Faction ${factionId}`;
-      }
-      return acc;
-    }, {})}
-    patronDeity={patronDeity}  // Add this line
-  />
-)}
+      {activeTab === "court" && (
+        <Court 
+          isGM={isGM}
+          myFactionId={Number(id)}
+          factionNames={allFactionNames}  // FIX: Use the properly loaded faction names
+          patronDeity={patronDeity}
+        />
+      )}
     </div>
   );
 }
