@@ -51,8 +51,8 @@ export const DEITIES = {
       farm2LevyBonus: 20,
     },
     description: [
-      "Farms produce +10 levy archers (50 total)",
-      "Farm2 produces +20 levy archers (100 total)"
+      "Farms produce +10 levy archers",
+      "Farm2 produces +20 levy archers"
     ]
   },
   kurimbor: {
