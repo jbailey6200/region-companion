@@ -1,5 +1,5 @@
 // components/Court.jsx
-// High Court management component - FIXED VERSION
+// High Court management component - FIXED VERSION WITH NEUTRAL CHARACTER SUPPORT
 
 import { useState, useEffect } from "react";
 import { db } from "../firebase/config";
@@ -38,13 +38,14 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
     return () => unsub();
   }, []);
 
-  // Load all characters (GM only)
+  // Load all characters (GM only) - INCLUDING NEUTRALS
   useEffect(() => {
     if (!isGM) return;
 
     const unsubscribers = [];
     const charactersByFaction = {};
 
+    // Load faction characters (1-8)
     for (let factionId = 1; factionId <= 8; factionId++) {
       const unsub = onSnapshot(
         collection(db, "factions", String(factionId), "characters"),
@@ -71,15 +72,51 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
             };
           });
           
-          // Combine all characters
-          const allChars = [];
-          Object.values(charactersByFaction).forEach(chars => {
-            allChars.push(...chars);
-          });
-          setAllCharacters(allChars);
+          updateAllCharacters();
         }
       );
       unsubscribers.push(unsub);
+    }
+
+    // CRITICAL: Load neutral characters too!
+    const neutralUnsub = onSnapshot(
+      collection(db, "factions", "neutral", "characters"),
+      (snap) => {
+        charactersByFaction['neutral'] = snap.docs.map(doc => {
+          const data = doc.data();
+          // Build proper character name
+          const firstName = data.firstName || "";
+          const lastName = data.lastName || "";
+          const fullName = `${firstName} ${lastName}`.trim() || "Unnamed Character";
+          
+          return {
+            id: doc.id,
+            factionId: 'neutral',
+            factionName: 'Neutral',
+            firstName: firstName,
+            lastName: lastName,
+            fullName: fullName,
+            leadership: data.leadership || 1,
+            prowess: data.prowess || 1,
+            stewardship: data.stewardship || 1,
+            intrigue: data.intrigue || 1,
+            isNeutral: true,
+            ...data
+          };
+        });
+        
+        updateAllCharacters();
+      }
+    );
+    unsubscribers.push(neutralUnsub);
+
+    function updateAllCharacters() {
+      // Combine all characters (faction + neutral)
+      const allChars = [];
+      Object.values(charactersByFaction).forEach(chars => {
+        allChars.push(...chars);
+      });
+      setAllCharacters(allChars);
     }
 
     return () => unsubscribers.forEach(unsub => unsub());
@@ -92,24 +129,44 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
     
     // For each court position with a character
     Object.values(courtPositions).forEach(position => {
-      if (position.characterId && position.factionId) {
-        // Listen to the character's live data
-        const unsub = onSnapshot(
-          doc(db, "factions", String(position.factionId), "characters", position.characterId),
-          (snap) => {
-            if (snap.exists()) {
-              const data = snap.data();
-              stats[position.characterId] = {
-                leadership: data.leadership || 1,
-                prowess: data.prowess || 1,
-                stewardship: data.stewardship || 1,
-                intrigue: data.intrigue || 1,
-              };
-              setCharacterStats(prevStats => ({...prevStats, ...stats}));
+      if (position.characterId) {
+        // Handle neutral characters differently
+        if (position.factionId === 'neutral') {
+          const unsub = onSnapshot(
+            doc(db, "factions", "neutral", "characters", position.characterId),
+            (snap) => {
+              if (snap.exists()) {
+                const data = snap.data();
+                stats[position.characterId] = {
+                  leadership: data.leadership || 1,
+                  prowess: data.prowess || 1,
+                  stewardship: data.stewardship || 1,
+                  intrigue: data.intrigue || 1,
+                };
+                setCharacterStats(prevStats => ({...prevStats, ...stats}));
+              }
             }
-          }
-        );
-        unsubscribers.push(unsub);
+          );
+          unsubscribers.push(unsub);
+        } else if (position.factionId) {
+          // Normal faction character
+          const unsub = onSnapshot(
+            doc(db, "factions", String(position.factionId), "characters", position.characterId),
+            (snap) => {
+              if (snap.exists()) {
+                const data = snap.data();
+                stats[position.characterId] = {
+                  leadership: data.leadership || 1,
+                  prowess: data.prowess || 1,
+                  stewardship: data.stewardship || 1,
+                  intrigue: data.intrigue || 1,
+                };
+                setCharacterStats(prevStats => ({...prevStats, ...stats}));
+              }
+            }
+          );
+          unsubscribers.push(unsub);
+        }
       }
     });
 
@@ -134,7 +191,7 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
           position: positionName,
           characterId: character.id,
           characterName: character.fullName,
-          factionId: character.factionId,
+          factionId: character.factionId, // Will be 'neutral' for neutral characters
           factionName: character.factionName,
           // Add character stats
           leadership: character.leadership || 1,
@@ -142,7 +199,8 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
           stewardship: character.stewardship || 1,
           intrigue: character.intrigue || 1,
           appointedAt: new Date().toISOString(),
-          appointedBy: 'GM'
+          appointedBy: 'GM',
+          isNeutral: character.isNeutral || false,
         };
         
         await setDoc(positionDoc, appointmentData);
@@ -158,14 +216,21 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
     }
   }
 
-  // Count positions by faction
+  // Count positions by faction (excluding neutrals in faction count)
   const positionsByFaction = {};
   Object.values(courtPositions).forEach(pos => {
-    if (!positionsByFaction[pos.factionId]) {
-      positionsByFaction[pos.factionId] = [];
+    if (pos.factionId !== 'neutral') {
+      if (!positionsByFaction[pos.factionId]) {
+        positionsByFaction[pos.factionId] = [];
+      }
+      positionsByFaction[pos.factionId].push(pos);
     }
-    positionsByFaction[pos.factionId].push(pos);
   });
+
+  // Count neutral positions separately
+  const neutralPositions = Object.values(courtPositions).filter(
+    pos => pos.factionId === 'neutral'
+  );
 
   // UPDATED BRIGHTER COLORS
   const ENHANCED_COLORS = {
@@ -201,7 +266,7 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
       </p>
 
       {/* Faction Summary */}
-      {Object.keys(positionsByFaction).length > 0 && (
+      {(Object.keys(positionsByFaction).length > 0 || neutralPositions.length > 0) && (
         <div style={{
           marginBottom: "24px",
           padding: "12px",
@@ -225,6 +290,17 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
                 <strong>{factionNames[factionId]}</strong>: {positions.length} position{positions.length !== 1 ? 's' : ''}
               </div>
             ))}
+            {neutralPositions.length > 0 && (
+              <div style={{
+                padding: "6px",
+                background: "#2a2218",
+                borderRadius: "4px",
+                fontSize: "13px",
+                border: "1px solid #808080"
+              }}>
+                <strong>Neutral Lords</strong>: {neutralPositions.length} position{neutralPositions.length !== 1 ? 's' : ''}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -238,13 +314,14 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
         {Object.entries(COURT_POSITIONS).map(([positionKey, config]) => {
           const currentHolder = courtPositions[positionKey];
           const isMyFaction = currentHolder?.factionId === myFactionId;
+          const isNeutralHolder = currentHolder?.factionId === 'neutral';
           const isEditing = editingPosition === positionKey;
           const enhancedColor = ENHANCED_COLORS[positionKey] || config.color;
 
           return (
             <div key={positionKey} style={{
               padding: "16px",
-              background: isMyFaction ? "#1f2a1f" : "#241b15",
+              background: isMyFaction ? "#1f2a1f" : isNeutralHolder ? "#2a2218" : "#241b15",
               border: `2px solid ${currentHolder ? enhancedColor : '#3a2f24'}`,
               borderRadius: "8px",
               position: "relative",
@@ -308,12 +385,12 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
                     </div>
                     <div style={{ 
                       fontSize: "12px", 
-                      color: "#c7bca5",
+                      color: isNeutralHolder ? "#808080" : "#c7bca5",
                       marginTop: "4px"
                     }}>
-                      {currentHolder.factionName}
+                      {isNeutralHolder ? "⚔️ Neutral Lord" : currentHolder.factionName}
                     </div>
-                    {/* DISPLAY CHARACTER STATS WITH DEITY BONUSES */}
+                    {/* DISPLAY CHARACTER STATS WITH DEITY/MERCY BONUSES */}
                     <div style={{
                       marginTop: "8px",
                       display: "grid",
@@ -324,7 +401,7 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
                     }}>
                       {(() => {
                         // Get deity bonuses if this is our faction
-                        const deity = (currentHolder.factionId === myFactionId && patronDeity) 
+                        const deity = (!isNeutralHolder && currentHolder.factionId === myFactionId && patronDeity) 
                           ? DEITIES[patronDeity] 
                           : null;
                         const leadershipBonus = deity?.bonuses?.characterLeadership || 0;
@@ -332,6 +409,9 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
                         const intrigueBonus = deity?.bonuses?.characterIntrigue || 0;
                         
                         const currentStats = characterStats[currentHolder.characterId] || currentHolder;
+                        
+                        // Check if this character wields Mercy
+                        const wieldsmercy = positionKey === 'Lord Justiciar';
                         
                         return (
                           <>
@@ -346,7 +426,7 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
                               {prowessBonus > 0 && (
                                 <span style={{ color: "#b5e8a1", fontWeight: "bold" }}> (+{prowessBonus})</span>
                               )}
-                              {positionKey === 'Lord Justiciar' && (
+                              {wieldsmercy && (
                                 <span style={{ color: "#FFD700", fontWeight: "bold" }}> (+6)</span>
                               )}
                             </div>
@@ -403,23 +483,35 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
                         defaultValue={currentHolder?.characterId || ''}
                       >
                         <option value="">-- Vacant --</option>
-                        {allCharacters
-                          .sort((a, b) => {
-                            if (a.factionId !== b.factionId) {
-                              return a.factionId - b.factionId;
-                            }
-                            return a.fullName.localeCompare(b.fullName);
-                          })
-                          .map(char => {
-                            // Format character display with stats
-                            const displayName = `${char.fullName} (${char.factionName}) - L:${char.leadership} P:${char.prowess} S:${char.stewardship} I:${char.intrigue}`;
-                            
-                            return (
-                              <option key={char.id} value={char.id}>
-                                {displayName}
-                              </option>
-                            );
-                          })}
+                        
+                        {/* Group characters by faction */}
+                        <optgroup label="=== Neutral Lords ===">
+                          {allCharacters
+                            .filter(char => char.factionId === 'neutral')
+                            .map(char => {
+                              const displayName = `${char.fullName} - L:${char.leadership} P:${char.prowess} S:${char.stewardship} I:${char.intrigue}`;
+                              return (
+                                <option key={char.id} value={char.id}>
+                                  {displayName}
+                                </option>
+                              );
+                            })}
+                        </optgroup>
+                        
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map(fId => (
+                          <optgroup key={fId} label={`=== ${factionNames[fId] || `Faction ${fId}`} ===`}>
+                            {allCharacters
+                              .filter(char => char.factionId === fId)
+                              .map(char => {
+                                const displayName = `${char.fullName} - L:${char.leadership} P:${char.prowess} S:${char.stewardship} I:${char.intrigue}`;
+                                return (
+                                  <option key={char.id} value={char.id}>
+                                    {displayName}
+                                  </option>
+                                );
+                              })}
+                          </optgroup>
+                        ))}
                       </select>
                       <button
                         onClick={() => setEditingPosition(null)}
@@ -468,6 +560,7 @@ export default function Court({ isGM, myFactionId, factionNames, patronDeity }) 
         }}>
           <strong>Note:</strong> Court positions are appointed by the Game Master. 
           Members of your faction holding court positions provide their bonuses to your faction's economy and capabilities.
+          Neutral lords in court positions receive their position's benefits but provide no faction bonuses.
         </div>
       )}
 
