@@ -274,14 +274,14 @@ function getModifiedUpkeep(unitType, baseUpkeep, patronDeity) {
 const LEVY_UPKEEP_PER_UNIT = 0.25;
 
 const DEFAULT_CRESTS = {
-  "1": null,
-  "2": "/holmes.png",
-  "3": null,
-  "4": null,
-  "5": null,
-  "6": null,
+  "1": "/faction1.png",
+  "2": "/holmes.png",       
+  "3": "/faction3.png",
+  "4": "/faction4.png",
+  "5": "/faction5.png",
+  "6": "/faction6.png",
   "7": "/stanford.png",
-  "8": null,
+  "8": "/faction8.png",
 };
 
 /* -------------------------------------------------------

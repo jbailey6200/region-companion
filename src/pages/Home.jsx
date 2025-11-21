@@ -6,17 +6,16 @@ import { verifyPin, getAuthState, setAuthState, clearAuthState } from "../utils/
 import { db } from "../firebase/config";
 import { collection, onSnapshot } from "firebase/firestore";
 
-// Default crests - Place images in public folder
-// Example: public/stanford.png, public/holmes.png, etc.
+
 const DEFAULT_CRESTS = {
-  "1": null,     // Place image in public/stanford.png
-  "2": "/holmes.png",       // Place image in public/holmes.png
-  "3": null,               // Add crest: public/faction3.png
-  "4": null,               // Add crest: public/faction4.png
-  "5": null,               // Add crest: public/faction5.png
-  "6": null,               // Add crest: public/faction6.png
+  "1": "/faction1.png",
+  "2": "/holmes.png",       
+  "3": "/faction3.png",
+  "4": "/faction4.png",
+  "5": "/faction5.png",
+  "6": "/faction6.png",
   "7": "/stanford.png",
-  "8": null,             // Add crest: public/faction8.png
+  "8": "/faction8.png",
 };
 
 export default function Home() {
