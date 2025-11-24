@@ -99,6 +99,9 @@ function calculateEconomy(regions, patronDeity = null) {
   const deity = patronDeity ? DEITIES[patronDeity] : null;
 
   for (const r of regions) {
+    // Skip regions under siege - they contribute nothing
+    if (r.underSiege) continue;
+
     const ups = r.upgrades || [];
     const disabled = r.disabledUpgrades || [];
     const terrain = r.terrain || TERRAIN_TYPES.PLAINS;
@@ -305,6 +308,7 @@ export default function Faction() {
   const [agents, setAgents] = useState([]);
   const [newAgentType, setNewAgentType] = useState("spy");
   const [newAgentName, setNewAgentName] = useState("");
+  const [newAgentLocation, setNewAgentLocation] = useState("");
 
   const [characters, setCharacters] = useState([]);
   const [isAddingCharacter, setIsAddingCharacter] = useState(false);
@@ -832,6 +836,7 @@ export default function Faction() {
       name,
       type,
       level: startingLevel,
+      location: newAgentLocation || "",
     });
 
     show(
@@ -842,6 +847,7 @@ export default function Faction() {
     );
 
     setNewAgentName("");
+    setNewAgentLocation("");
   }
 
   async function handleDeleteAgent(agentId) {
@@ -863,179 +869,221 @@ export default function Faction() {
   }
 
   function renderAgentCard(agent) {
-    const typeLabel =
-      agent.type === "spy"
-        ? "Spy"
-        : agent.type === "agitator"
-        ? "Agitator"
-        : "Enforcer";
+  const typeLabel =
+    agent.type === "spy"
+      ? "Spy"
+      : agent.type === "agitator"
+      ? "Agitator"
+      : "Enforcer";
 
-    const typeColor =
-      agent.type === "spy"
-        ? "#4a607d"
-        : agent.type === "agitator"
-        ? "#b3403d"
-        : "#6a8f4e";
+  const typeColor =
+    agent.type === "spy"
+      ? "#4a607d"
+      : agent.type === "agitator"
+      ? "#b3403d"
+      : "#6a8f4e";
 
-    const baseUpkeep = AGENT_UPKEEP[agent.type] || 0;
-    const modifiedUpkeep = getModifiedUpkeep(
-      agent.type,
-      baseUpkeep,
-      patronDeity
-    );
+  const baseUpkeep = AGENT_UPKEEP[agent.type] || 0;
+  const modifiedUpkeep = getModifiedUpkeep(
+    agent.type,
+    baseUpkeep,
+    patronDeity
+  );
 
-    return (
+  // Sort regions for dropdown
+  const sortedRegions = [...allRegions].sort((a, b) => {
+    if (a.code && b.code) return a.code.localeCompare(b.code);
+    if (a.code) return -1;
+    if (b.code) return 1;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+
+  async function handleAgentLocationChange(newLocation) {
+    if (!canEditAgents) return;
+    const ref = doc(db, "agents", agent.id);
+    await updateDoc(ref, { location: newLocation });
+  }
+
+  return (
+    <div
+      key={agent.id}
+      className="card"
+      style={{ marginBottom: 12 }}
+    >
       <div
-        key={agent.id}
-        className="card"
-        style={{ marginBottom: 12 }}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
       >
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
-            gap: 12,
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 10,
           }}
         >
-          <div
+          <h3 style={{ margin: 0, flex: 1 }}>
+            {agent.name || "Unnamed Agent"}
+          </h3>
+
+          {canEditAgents && (
+            <button
+              className="small"
+              onClick={() =>
+                handleDeleteAgent(agent.id)
+              }
+              style={{
+                background: "#8b3a3a",
+                border: "1px solid #6d2828",
+                margin: 0,
+                flexShrink: 0,
+              }}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+
+        {/* Location Dropdown */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: "#a89a7a", fontSize: 13 }}>Location:</span>
+          <select
+            value={agent.location || ""}
+            disabled={!canEditAgents}
+            onChange={(e) => handleAgentLocationChange(e.target.value)}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: 10,
+              flex: 1,
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: "1px solid #4c3b2a",
+              background: "#1b130d",
+              color: "#e7dfd2",
+              fontSize: 13,
+              fontFamily: "Georgia, serif",
+              cursor: canEditAgents ? "pointer" : "not-allowed",
             }}
           >
-            <h3 style={{ margin: 0, flex: 1 }}>
-              {agent.name || "Unnamed Agent"}
-            </h3>
+            <option value="">-- No Location --</option>
+            {sortedRegions.map(region => (
+              <option key={region.id} value={region.code || region.id}>
+                [{region.code || '??'}] {region.name || 'Unnamed'}
+              </option>
+            ))}
+          </select>
+        </div>
 
-            {canEditAgents && (
-              <button
-                className="small"
-                onClick={() =>
-                  handleDeleteAgent(agent.id)
-                }
-                style={{
-                  background: "#8b3a3a",
-                  border: "1px solid #6d2828",
-                  margin: 0,
-                  flexShrink: 0,
-                }}
-              >
-                Delete
-              </button>
-            )}
-          </div>
-
-          <div
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <span
             style={{
+              padding: "3px 10px",
+              borderRadius: 999,
+              border: "1px solid #4c3b2a",
+              background: typeColor,
+              color: "#f8f4e8",
+              fontFamily: "Georgia, serif",
+              fontSize: 13,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {typeLabel}
+          </span>
+
+          <span
+            style={{
+              color: "#c7bca5",
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              flexWrap: "wrap",
+              gap: 4,
+              fontSize: 13,
             }}
           >
-            <span
+            Level
+            <input
+              type="number"
+              min="1"
+              max="10"
+              value={agent.level || 1}
+              onChange={(e) =>
+                handleAgentLevelChange(
+                  agent.id,
+                  e.target.value
+                )
+              }
+              disabled={!canEditAgents}
               style={{
-                padding: "3px 10px",
-                borderRadius: 999,
-                border: "1px solid #4c3b2a",
-                background: typeColor,
-                color: "#f8f4e8",
+                width: 50,
+                padding: "4px 8px",
+                borderRadius: 4,
+                border: "1px solid #5e4934",
+                background: canEditAgents
+                  ? "#1d1610"
+                  : "#2a2218",
+                color: "#f3eadc",
                 fontFamily: "Georgia, serif",
-                fontSize: 13,
-                whiteSpace: "nowrap",
+                fontSize: 14,
               }}
-            >
-              {typeLabel}
-            </span>
+            />
+          </span>
 
-            <span
-              style={{
-                color: "#c7bca5",
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                fontSize: 13,
-              }}
-            >
-              Level
-              <input
-                type="number"
-                min="1"
-                max="10"
-                value={agent.level || 1}
-                onChange={(e) =>
-                  handleAgentLevelChange(
-                    agent.id,
-                    e.target.value
-                  )
-                }
-                disabled={!canEditAgents}
-                style={{
-                  width: 50,
-                  padding: "4px 8px",
-                  borderRadius: 4,
-                  border: "1px solid #5e4934",
-                  background: canEditAgents
-                    ? "#1d1610"
-                    : "#2a2218",
-                  color: "#f3eadc",
-                  fontFamily: "Georgia, serif",
-                  fontSize: 14,
-                }}
-              />
-            </span>
-
-            <span
-              style={{
-                color: "#a89a7a",
-                fontSize: 12,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Upkeep:{" "}
-              {baseUpkeep !== modifiedUpkeep ? (
-                <>
-                  <span
-                    style={{
-                      textDecoration: "line-through",
-                      opacity: 0.5,
-                    }}
-                  >
-                    {baseUpkeep}
-                  </span>{" "}
-                  <span
-                    style={{
-                      color: "#b5e8a1",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {modifiedUpkeep}
-                  </span>
-                </>
-              ) : (
-                baseUpkeep
+          <span
+            style={{
+              color: "#a89a7a",
+              fontSize: 12,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Upkeep:{" "}
+            {baseUpkeep !== modifiedUpkeep ? (
+              <>
+                <span
+                  style={{
+                    textDecoration: "line-through",
+                    opacity: 0.5,
+                  }}
+                >
+                  {baseUpkeep}
+                </span>{" "}
+                <span
+                  style={{
+                    color: "#b5e8a1",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {modifiedUpkeep}
+                </span>
+              </>
+            ) : (
+              baseUpkeep
+            )}
+            g/turn
+            {agent.type === "agitator" &&
+              patronDeity === "comnea" && (
+                <span
+                  style={{
+                    color: "#b5e8a1",
+                    fontSize: 11,
+                  }}
+                >
+                  {" "}
+                  (Comnea)
+                </span>
               )}
-              g/turn
-              {agent.type === "agitator" &&
-                patronDeity === "comnea" && (
-                  <span
-                    style={{
-                      color: "#b5e8a1",
-                      fontSize: 11,
-                    }}
-                  >
-                    {" "}
-                    (Comnea)
-                  </span>
-                )}
-            </span>
-          </div>
+          </span>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   function renderAgentsTab() {
     const hasSpymaster = courtBonuses.positions.some(
@@ -1163,86 +1211,126 @@ export default function Faction() {
               )}
             </p>
             <form
-              onSubmit={handleHireAgent}
-              className="agent-hire-form"
-            >
-              <label
-                style={{
-                  fontSize: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <span>Type:</span>
-                <select
-                  value={newAgentType}
-                  onChange={(e) =>
-                    setNewAgentType(e.target.value)
-                  }
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 6,
-                    border: "1px solid #5e4934",
-                    background: "#241b15",
-                    color: "#f4efe4",
-                    fontFamily: "Georgia, serif",
-                    fontSize: 14,
-                  }}
-                >
-                  <option value="spy">Spy (1g)</option>
-                  <option value="agitator">
-                    Agitator (
-                    {getModifiedUpkeep(
-                      "agitator",
-                      4,
-                      patronDeity
-                    )}
-                    g)
-                  </option>
-                  <option value="enforcer">
-                    Enforcer (2g)
-                  </option>
-                </select>
-              </label>
+  onSubmit={handleHireAgent}
+  className="agent-hire-form"
+  style={{ gridTemplateColumns: "auto minmax(180px, 1fr) minmax(180px, 1fr) auto" }}
+>
+  <label
+    style={{
+      fontSize: 14,
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+    }}
+  >
+    <span>Type:</span>
+    <select
+      value={newAgentType}
+      onChange={(e) =>
+        setNewAgentType(e.target.value)
+      }
+      style={{
+        padding: "6px 10px",
+        borderRadius: 6,
+        border: "1px solid #5e4934",
+        background: "#241b15",
+        color: "#f4efe4",
+        fontFamily: "Georgia, serif",
+        fontSize: 14,
+      }}
+    >
+      <option value="spy">Spy (1g)</option>
+      <option value="agitator">
+        Agitator (
+        {getModifiedUpkeep(
+          "agitator",
+          4,
+          patronDeity
+        )}
+        g)
+      </option>
+      <option value="enforcer">
+        Enforcer (2g)
+      </option>
+    </select>
+  </label>
 
-              <label
-                style={{
-                  fontSize: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <span>Name:</span>
-                <input
-                  type="text"
-                  value={newAgentName}
-                  onChange={(e) =>
-                    setNewAgentName(e.target.value)
-                  }
-                  placeholder="Optional agent name"
-                  style={{
-                    flex: 1,
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    border: "1px solid #5e4934",
-                    background: "#1d1610",
-                    color: "#f3eadc",
-                    fontFamily: "Georgia, serif",
-                    fontSize: 16,
-                  }}
-                />
-              </label>
+  <label
+    style={{
+      fontSize: 14,
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+    }}
+  >
+    <span>Name:</span>
+    <input
+      type="text"
+      value={newAgentName}
+      onChange={(e) =>
+        setNewAgentName(e.target.value)
+      }
+      placeholder="Optional agent name"
+      style={{
+        flex: 1,
+        padding: "8px 12px",
+        borderRadius: 8,
+        border: "1px solid #5e4934",
+        background: "#1d1610",
+        color: "#f3eadc",
+        fontFamily: "Georgia, serif",
+        fontSize: 16,
+      }}
+    />
+  </label>
 
-              <button
-                type="submit"
-                disabled={!canRaiseAgentWithCourt(agentsCount, maxAgents, courtBonuses)}
-                style={{ margin: 0 }}
-              >
-                Hire Agent
-              </button>
-            </form>
+  <label
+    style={{
+      fontSize: 14,
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+    }}
+  >
+    <span>Location:</span>
+    <select
+      value={newAgentLocation}
+      onChange={(e) => setNewAgentLocation(e.target.value)}
+      style={{
+        flex: 1,
+        padding: "6px 10px",
+        borderRadius: 6,
+        border: "1px solid #5e4934",
+        background: "#241b15",
+        color: "#f4efe4",
+        fontFamily: "Georgia, serif",
+        fontSize: 14,
+      }}
+    >
+      <option value="">-- No Location --</option>
+      {[...allRegions]
+        .sort((a, b) => {
+          if (a.code && b.code) return a.code.localeCompare(b.code);
+          if (a.code) return -1;
+          if (b.code) return 1;
+          return (a.name || '').localeCompare(b.name || '');
+        })
+        .map(region => (
+          <option key={region.id} value={region.code || region.id}>
+            [{region.code || '??'}] {region.name || 'Unnamed'}
+          </option>
+        ))}
+    </select>
+  </label>
+
+  <button
+    type="submit"
+    disabled={!canRaiseAgentWithCourt(agentsCount, maxAgents, courtBonuses)}
+    style={{ margin: 0 }}
+  >
+    Hire Agent
+  </button>
+</form>
           </div>
         )}
 
@@ -1797,6 +1885,9 @@ export default function Faction() {
       ? factionData.name
       : `Faction ${id}`;
 
+  // Count sieged regions
+  const siegedRegionsCount = regions.filter(r => r.underSiege).length;
+
   if (!role) {
     return (
       <div className="container">
@@ -2010,6 +2101,26 @@ export default function Faction() {
         </div>
       )}
 
+      {/* Siege Warning Banner */}
+      {siegedRegionsCount > 0 && (
+        <div style={{
+          background: "linear-gradient(90deg, #5a2020 0%, #3a1a1a 100%)",
+          border: "2px solid #8b3a3a",
+          borderRadius: "8px",
+          padding: "12px 16px",
+          marginBottom: "16px",
+          textAlign: "center"
+        }}>
+          <span style={{ 
+            color: "#ff6666", 
+            fontWeight: "bold",
+            fontSize: "16px"
+          }}>
+            ⚠️ {siegedRegionsCount} region{siegedRegionsCount !== 1 ? 's' : ''} under siege - production disabled
+          </span>
+        </div>
+      )}
+
       <div className="summary-row">
         <div className="summary-card">
           <h3>Buildings Economy</h3>
@@ -2049,6 +2160,11 @@ export default function Faction() {
               {manpowerNet}
             </strong>
           </p>
+          {siegedRegionsCount > 0 && (
+            <p style={{ fontSize: 12, color: "#ff6666" }}>
+              ⚠️ {siegedRegionsCount} region{siegedRegionsCount !== 1 ? 's' : ''} under siege
+            </p>
+          )}
         </div>
 
         <div className="summary-card">
@@ -2442,6 +2558,7 @@ export default function Faction() {
                 isOwner={isOwnerView}
                 characters={characters}
                 allArmies={armies}
+                allRegions={allRegions}
                 patronDeity={patronDeity}
                 courtBonuses={courtBonuses}
                 onChangeUnit={changeArmyUnit}

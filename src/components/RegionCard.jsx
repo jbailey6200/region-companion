@@ -1,4 +1,4 @@
-// components/RegionCard.jsx - FULL FILE WITH CUSTOM FACTION NAMES
+// components/RegionCard.jsx - FULL FILE WITH SIEGE FUNCTIONALITY
 
 import { useState, useEffect } from "react";
 import { db } from "../firebase/config";
@@ -192,8 +192,14 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
     await updateRegionFields({ upgrades: newUps, disabledUpgrades: [] });
   }
 
+  async function toggleSiege() {
+    if (!isGM) return;
+    await updateRegionFields({ underSiege: !region.underSiege });
+  }
+
   async function setSettlement(type) {
     if (!isOwner) return;
+    if (region.underSiege && !isGM) return;
 
     const current = getSettlement();
     let newUps = upgrades.filter((u) => !SETTLEMENTS.includes(u));
@@ -218,6 +224,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
 
   async function addFarm() {
     if (!isOwner) return;
+    if (region.underSiege && !isGM) return;
     const check = canAddBuilding(terrain, "Farm", upgrades);
     if (!check.allowed) {
       window.alert(check.reason);
@@ -237,6 +244,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
 
   async function upgradeFarm() {
     if (!isOwner) return;
+    if (region.underSiege && !isGM) return;
     const farmIdx = upgrades.indexOf("Farm");
     if (farmIdx === -1) {
       window.alert("No Farm to upgrade.");
@@ -253,6 +261,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
 
   async function removeFarm() {
     if (!isOwner) return;
+    if (region.underSiege && !isGM) return;
     let newUps = [...upgrades];
     const farm2Idx = newUps.indexOf("Farm2");
     if (farm2Idx !== -1) {
@@ -268,6 +277,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
 
   async function addMine() {
     if (!isOwner) return;
+    if (region.underSiege && !isGM) return;
     const check = canAddBuilding(terrain, "Mine", upgrades);
     if (!check.allowed) {
       window.alert(check.reason);
@@ -287,6 +297,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
 
   async function upgradeMine() {
     if (!isOwner) return;
+    if (region.underSiege && !isGM) return;
     const mineIdx = upgrades.indexOf("Mine");
     if (mineIdx === -1) {
       window.alert("No Mine to upgrade.");
@@ -303,6 +314,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
 
   async function removeMine() {
     if (!isOwner) return;
+    if (region.underSiege && !isGM) return;
     let newUps = [...upgrades];
     const mine2Idx = newUps.indexOf("Mine2");
     if (mine2Idx !== -1) {
@@ -321,6 +333,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
 
   async function toggleKeep() {
     if (!isOwner) return;
+    if (region.underSiege && !isGM) return;
     let newUps = [...upgrades];
     if (hasKeep) {
       newUps = newUps.filter((u) => u !== "Keep" && u !== "Castle");
@@ -346,6 +359,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
 
   async function upgradeToCastle() {
     if (!isOwner) return;
+    if (region.underSiege && !isGM) return;
     if (!hasKeep) {
       window.alert("Need Keep first.");
       return;
@@ -369,6 +383,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
 
   async function removeCastle() {
     if (!isOwner) return;
+    if (region.underSiege && !isGM) return;
     const newUps = upgrades.filter((u) => u !== "Castle");
     await updateUpgrades(newUps);
   }
@@ -424,8 +439,46 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
   const castleBaseCost = BUILDING_RULES.Castle.buildCost;
   const castleCost = getModifiedBuildingCost('Castle', castleBaseCost);
 
+  // Check if region is under siege
+  const underSiege = region.underSiege || false;
+
   return (
-    <div className="card" style={{ marginBottom: "12px" }}>
+    <div className="card" style={{ 
+      marginBottom: "12px",
+      background: underSiege ? "#3a1a1a" : "#201712",
+      border: underSiege ? "2px solid #8b3a3a" : "1px solid #4c3b2a"
+    }}>
+      {/* Siege Banner */}
+      {underSiege && (
+        <div style={{
+          background: "linear-gradient(90deg, #8b3a3a 0%, #5a2020 100%)",
+          color: "#fff",
+          padding: "8px 12px",
+          marginBottom: "12px",
+          borderRadius: "6px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          fontWeight: "bold"
+        }}>
+          <span>🏰 UNDER SIEGE - All production disabled</span>
+          {isGM && (
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleSiege(); }}
+              className="small"
+              style={{
+                margin: 0,
+                padding: "4px 10px",
+                background: "#4a6642",
+                borderColor: "#5a7a52"
+              }}
+            >
+              Lift Siege
+            </button>
+          )}
+        </div>
+      )}
+
       <div
         style={{
           display: "flex",
@@ -447,8 +500,8 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                 borderRadius: "6px",
                 fontSize: "15px",
                 fontWeight: 700,
-                backgroundColor: "#30425d",
-                border: "1.5px solid #4a5d7a",
+                backgroundColor: underSiege ? "#5a2020" : "#30425d",
+                border: underSiege ? "1.5px solid #8b3a3a" : "1.5px solid #4a5d7a",
                 color: "#f8f4e6",
               }}
             >
@@ -540,6 +593,25 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
               <span style={{ fontSize: "16px" }}>{terrainInfo.icon}</span>
               <span>{terrainInfo.name}</span>
             </span>
+
+            {/* GM Siege Toggle Button */}
+            {isGM && !underSiege && (
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleSiege(); }}
+                className="small"
+                style={{
+                  margin: 0,
+                  padding: "4px 10px",
+                  minHeight: "28px",
+                  background: "#5a2020",
+                  borderColor: "#8b3a3a",
+                  color: "#ffaaaa"
+                }}
+                title="Put region under siege"
+              >
+                🏰 Siege
+              </button>
+            )}
           </div>
           <p style={{ margin: 0, fontSize: "14px" }}>
             <strong>Owner:</strong> {getFactionName(region.owner)}  ·  <strong>Settlement:</strong> {settlement}
@@ -552,7 +624,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
         </div>
         
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-          {isOwner && (
+          {isOwner && !underSiege && (
             <>
               <button
                 onClick={(e) => { e.stopPropagation(); setSettlement("None"); }}
@@ -620,6 +692,17 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
               </button>
             </>
           )}
+
+          {/* Show disabled message for non-GM when under siege */}
+          {isOwner && underSiege && !isGM && (
+            <span style={{ 
+              fontSize: "12px", 
+              color: "#ff6666",
+              fontStyle: "italic"
+            }}>
+              Building disabled during siege
+            </span>
+          )}
           
           <button
             type="button"
@@ -645,7 +728,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
           style={{ marginTop: "16px" }}
           onClick={(e) => e.stopPropagation()}
         >
-          {isOwner && (
+          {isOwner && !underSiege && (
             <div style={{ 
               marginBottom: "16px", 
               padding: "12px", 
@@ -689,13 +772,28 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
             <div className="card" style={{ marginBottom: "12px", padding: "12px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                 <strong>GM Controls</strong>
-                <button
-                  onClick={deleteRegion}
-                  className="small"
-                  style={{ background: "#990000", borderColor: "#660000", margin: "0", padding: "4px 10px", minHeight: "28px" }}
-                >
-                  Delete Region
-                </button>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    onClick={toggleSiege}
+                    className="small"
+                    style={{ 
+                      background: underSiege ? "#4a6642" : "#5a2020", 
+                      borderColor: underSiege ? "#5a7a52" : "#8b3a3a", 
+                      margin: "0", 
+                      padding: "4px 10px", 
+                      minHeight: "28px" 
+                    }}
+                  >
+                    {underSiege ? "🏳️ Lift Siege" : "🏰 Place Under Siege"}
+                  </button>
+                  <button
+                    onClick={deleteRegion}
+                    className="small"
+                    style={{ background: "#990000", borderColor: "#660000", margin: "0", padding: "4px 10px", minHeight: "28px" }}
+                  >
+                    Delete Region
+                  </button>
+                </div>
               </div>
               <label style={{ fontSize: "13px", display: "flex", flexDirection: "column", gap: "4px" }}>
                 <span>Transfer to faction:</span>
@@ -753,7 +851,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                   Farms: <strong>{farmCount + farm2Count} / {terrainInfo.maxFarms}</strong>
                   {farm2Count > 0 && ` (${farm2Count} upgraded)`}
                 </div>
-                {isOwner && (
+                {isOwner && !underSiege && (
                   <div style={{ display: "flex", gap: "3px", flexWrap: "wrap" }}>
                     <button className="small" onClick={addFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
                       + Farm ({BUILDING_RULES.Farm.buildCost}g)
@@ -777,7 +875,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                   Mines: <strong>{mineCount + mine2Count} / {terrainInfo.maxMines}</strong>
                   {mine2Count > 0 && ` (${mine2Count} upgraded)`}
                 </div>
-                {isOwner && (
+                {isOwner && !underSiege && (
                   <div style={{ display: "flex", gap: "3px", flexWrap: "wrap" }}>
                     <button className="small" onClick={addMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
                       + Mine ({BUILDING_RULES.Mine.buildCost}g)
@@ -815,7 +913,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                   </span>
                 )}
               </div>
-              {isOwner && (
+              {isOwner && !underSiege && (
                 <div style={{ display: "flex", gap: "3px", flexWrap: "wrap", marginTop: "6px" }}>
                   {!hasKeep && (
                     <button className="small" onClick={toggleKeep} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>

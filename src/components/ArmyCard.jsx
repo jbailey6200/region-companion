@@ -1,4 +1,4 @@
-// components/ArmyCard.jsx - FIXED VERSION
+// components/ArmyCard.jsx - UPDATED WITH LOCATION DROPDOWN
 
 import React, { useState, useRef, useEffect } from "react";
 import { HSG_UNITS } from "../config/buildingRules";
@@ -28,6 +28,7 @@ export default function ArmyCard({
   isOwner,
   characters = [],
   allArmies = [],
+  allRegions = [], // NEW: All regions for location dropdown
   patronDeity,
   courtBonuses,
   onChangeUnit,
@@ -146,6 +147,20 @@ export default function ArmyCard({
     hasBonus: getModifiedUpkeep(u.key, u.baseUpkeep, patronDeity) !== u.baseUpkeep
   }));
 
+  // Sort regions for dropdown - by code then by name
+  const sortedRegions = [...allRegions].sort((a, b) => {
+    if (a.code && b.code) return a.code.localeCompare(b.code);
+    if (a.code) return -1;
+    if (b.code) return 1;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+
+  // Get current location display
+  const currentRegion = allRegions.find(r => r.code === location || r.id === location);
+  const locationDisplay = currentRegion 
+    ? `[${currentRegion.code}] ${currentRegion.name}`
+    : location || 'No location set';
+
   return (
     <div className="card">
       <div
@@ -175,24 +190,33 @@ export default function ArmyCard({
               }}
             />
           </div>
-          <input
-            type="text"
+          
+          {/* Location Dropdown */}
+          <select
             value={location || ""}
             disabled={!isOwner}
             onChange={(e) => onChangeField(id, "location", e.target.value)}
-            placeholder="Location (optional)"
             style={{
               marginTop: 4,
               width: "100%",
-              padding: "3px 8px",
+              padding: "6px 10px",
               borderRadius: 6,
               border: "1px solid #4c3b2a",
               background: "#1b130d",
               color: "#e7dfd2",
               fontSize: 13,
               fontFamily: "Georgia, serif",
+              cursor: isOwner ? "pointer" : "not-allowed",
             }}
-          />
+          >
+            <option value="">-- Select Location --</option>
+            {sortedRegions.map(region => (
+              <option key={region.id} value={region.code || region.id}>
+                [{region.code || '??'}] {region.name || 'Unnamed'} 
+                {region.underSiege ? ' 🏰 SIEGE' : ''}
+              </option>
+            ))}
+          </select>
 
           {/* Movement bonus indicator */}
           {deity?.bonuses.armyMovement && (

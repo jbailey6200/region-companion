@@ -43,6 +43,9 @@ function calculateEconomyWithDeity(regions, patronDeity = null) {
   const deity = patronDeity ? DEITIES[patronDeity] : null;
 
   regions.forEach((r) => {
+    // Skip regions under siege
+    if (r.underSiege) return;
+    
     const ups = r.upgrades || [];
     const disabled = r.disabledUpgrades || [];
     const terrain = r.terrain || TERRAIN_TYPES.PLAINS;
@@ -250,6 +253,9 @@ function FactionCard({
   
   const hsgUsed = totalHSGUnits * 10;
   const overCap = hsgUsed > eco.hsgCap;
+
+  // Count sieged regions
+  const siegedRegions = factionRegions.filter(r => r.underSiege).length;
   
   return (
     <div className="card" style={{ 
@@ -293,7 +299,13 @@ function FactionCard({
       }}>
         <div>
           <strong style={{ color: "#d1b26b" }}>Territory</strong>
-          <div>Regions: <strong>{factionRegions.length}</strong></div>
+          <div>Regions: <strong>{factionRegions.length}</strong>
+            {siegedRegions > 0 && (
+              <span style={{ color: "#ff4444", marginLeft: "6px" }}>
+                ({siegedRegions} under siege)
+              </span>
+            )}
+          </div>
           <div>Towns: {eco.townCount} | Cities: {eco.cityCount}</div>
         </div>
         
@@ -410,7 +422,7 @@ function FactionCard({
 }
 
 // Neutral Forces Component
-function NeutralForces({ armies, characters, onNavigate }) {
+function NeutralForces({ armies, characters, courtPositions, onNavigate }) {
   const [isCreatingArmy, setIsCreatingArmy] = useState(false);
   const [isCreatingCharacter, setIsCreatingCharacter] = useState(false);
   const [newArmyData, setNewArmyData] = useState({
@@ -432,6 +444,11 @@ function NeutralForces({ armies, characters, onNavigate }) {
     intrigue: 5,
     description: "",
   });
+
+  // Get court position for a character
+  function getCharacterCourtPosition(charId) {
+    return courtPositions.find(p => p.characterId === charId);
+  }
 
   async function createNeutralArmy() {
     const armiesRef = collection(db, "factions", "neutral", "armies");
@@ -493,6 +510,19 @@ function NeutralForces({ armies, characters, onNavigate }) {
     await updateDoc(doc(db, "factions", "neutral", "characters", id), {
       [field]: value,
     });
+  }
+
+  async function updateArmyCommanders(armyId, commanderIds) {
+    await updateDoc(doc(db, "factions", "neutral", "armies", armyId), {
+      commanders: commanderIds,
+    });
+  }
+
+  // Get commanders in other neutral armies
+  function getCommandersInOtherArmies(currentArmyId) {
+    return armies
+      .filter(a => a.id !== currentArmyId && !a.deleted)
+      .flatMap(a => a.commanders || []);
   }
 
   return (
@@ -604,46 +634,181 @@ function NeutralForces({ armies, characters, onNavigate }) {
         {armies.length === 0 ? (
           <p style={{ color: "#888" }}>No neutral armies yet</p>
         ) : (
-          armies.map(army => (
-            <div key={army.id} className="card" style={{ marginBottom: "12px" }}>
-              <div style={{ 
-                display: "flex", 
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "8px"
-              }}>
-                <h3 style={{ margin: 0, fontSize: "16px" }}>
-                  {army.name || "Unnamed Army"}
-                </h3>
-                <button
-                  onClick={() => deleteNeutralArmy(army.id)}
-                  className="small"
-                  style={{
-                    background: "#8b3a3a",
-                    border: "1px solid #6d2828",
-                  }}
-                >
-                  Delete
-                </button>
+          armies.map(army => {
+            const commandersInOther = getCommandersInOtherArmies(army.id);
+            const availableCommanders = characters.filter(
+              c => !commandersInOther.includes(c.id)
+            );
+            const currentCommanders = (army.commanders || [])
+              .map(cmdId => characters.find(c => c.id === cmdId))
+              .filter(Boolean);
+
+            return (
+              <div key={army.id} className="card" style={{ marginBottom: "12px" }}>
+                <div style={{ 
+                  display: "flex", 
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "8px"
+                }}>
+                  <h3 style={{ margin: 0, fontSize: "16px" }}>
+                    {army.name || "Unnamed Army"}
+                  </h3>
+                  <button
+                    onClick={() => deleteNeutralArmy(army.id)}
+                    className="small"
+                    style={{
+                      background: "#8b3a3a",
+                      border: "1px solid #6d2828",
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+                <p style={{ fontSize: "13px", color: "#c7bca5", margin: "4px 0" }}>
+                  Location: {army.location || "Unknown"}
+                </p>
+                
+                {/* Unit counts */}
+                <div style={{ 
+                  display: "grid", 
+                  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                  gap: "8px",
+                  fontSize: "12px",
+                  marginBottom: "12px"
+                }}>
+                  <div>Huscarls: <strong>{army.huscarls || 0}</strong></div>
+                  <div>Dis. Knights: <strong>{army.dismountedKnights || 0}</strong></div>
+                  <div>Mtd. Knights: <strong>{army.mountedKnights || 0}</strong></div>
+                  <div>Light Horse: <strong>{army.lightHorse || 0}</strong></div>
+                  <div>Levy Inf: <strong>{army.levyInfantry || 0}</strong></div>
+                  <div>Levy Arch: <strong>{army.levyArchers || 0}</strong></div>
+                </div>
+
+                {/* Commanders Section */}
+                <div style={{
+                  padding: "10px",
+                  background: "#1a1410",
+                  borderRadius: "6px",
+                  border: "1px solid #3a2f24"
+                }}>
+                  <div style={{ 
+                    fontSize: "12px", 
+                    fontWeight: "bold", 
+                    color: "#d1b26b",
+                    marginBottom: "8px"
+                  }}>
+                    Commanders ({currentCommanders.length}/3)
+                  </div>
+                  
+                  {currentCommanders.length > 0 && (
+                    <div style={{ marginBottom: "8px" }}>
+                      {currentCommanders.map(cmd => {
+                        const courtPos = getCharacterCourtPosition(cmd.id);
+                        const wieldsmercy = courtPos?.position === 'Lord Justiciar';
+                        
+                        return (
+                          <div key={cmd.id} style={{
+                            padding: "6px 8px",
+                            background: "#241b15",
+                            borderRadius: "4px",
+                            marginBottom: "4px",
+                            fontSize: "12px"
+                          }}>
+                            <div style={{ fontWeight: "bold" }}>
+                              {cmd.firstName} {cmd.lastName}
+                              {courtPos && (
+                                <span style={{ 
+                                  color: "#8B008B", 
+                                  marginLeft: "8px",
+                                  fontWeight: "normal"
+                                }}>
+                                  ({courtPos.position})
+                                </span>
+                              )}
+                              {wieldsmercy && (
+                                <span style={{ 
+                                  color: "#FFD700", 
+                                  marginLeft: "4px",
+                                  fontStyle: "italic"
+                                }}>
+                                  ⚔️ Mercy
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ color: "#a89a7a", marginTop: "2px" }}>
+                              Lead: {cmd.leadership} | 
+                              Prow: {cmd.prowess}
+                              {wieldsmercy && (
+                                <span style={{ color: "#FFD700", fontWeight: "bold" }}> (+6)</span>
+                              )} | 
+                              Stew: {cmd.stewardship} | 
+                              Intr: {cmd.intrigue}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  
+                  {/* Commander Selection */}
+                  <select
+                    onChange={(e) => {
+                      const charId = e.target.value;
+                      if (!charId) return;
+                      
+                      const currentCmds = army.commanders || [];
+                      if (currentCmds.length >= 3) {
+                        alert("Maximum 3 commanders per army");
+                        return;
+                      }
+                      if (currentCmds.includes(charId)) return;
+                      
+                      updateArmyCommanders(army.id, [...currentCmds, charId]);
+                      e.target.value = "";
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "6px",
+                      background: "#241b15",
+                      border: "1px solid #4c3b2a",
+                      borderRadius: "4px",
+                      color: "#f4efe4",
+                      fontSize: "12px"
+                    }}
+                  >
+                    <option value="">+ Add Commander...</option>
+                    {availableCommanders
+                      .filter(c => !(army.commanders || []).includes(c.id))
+                      .map(char => {
+                        const courtPos = getCharacterCourtPosition(char.id);
+                        return (
+                          <option key={char.id} value={char.id}>
+                            {char.firstName} {char.lastName} 
+                            (L:{char.leadership} P:{char.prowess})
+                            {courtPos ? ` [${courtPos.position}]` : ''}
+                          </option>
+                        );
+                      })}
+                  </select>
+                  
+                  {currentCommanders.length > 0 && (
+                    <button
+                      onClick={() => updateArmyCommanders(army.id, [])}
+                      className="small"
+                      style={{ 
+                        marginTop: "8px", 
+                        width: "100%",
+                        background: "#4a3a2a"
+                      }}
+                    >
+                      Clear All Commanders
+                    </button>
+                  )}
+                </div>
               </div>
-              <p style={{ fontSize: "13px", color: "#c7bca5", margin: "4px 0" }}>
-                Location: {army.location || "Unknown"}
-              </p>
-              <div style={{ 
-                display: "grid", 
-                gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                gap: "8px",
-                fontSize: "12px"
-              }}>
-                <div>Huscarls: <strong>{army.huscarls || 0}</strong></div>
-                <div>Dis. Knights: <strong>{army.dismountedKnights || 0}</strong></div>
-                <div>Mtd. Knights: <strong>{army.mountedKnights || 0}</strong></div>
-                <div>Light Horse: <strong>{army.lightHorse || 0}</strong></div>
-                <div>Levy Inf: <strong>{army.levyInfantry || 0}</strong></div>
-                <div>Levy Arch: <strong>{army.levyArchers || 0}</strong></div>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -746,58 +911,100 @@ function NeutralForces({ armies, characters, onNavigate }) {
         {characters.length === 0 ? (
           <p style={{ color: "#888" }}>No neutral characters yet</p>
         ) : (
-          characters.map(char => (
-            <div key={char.id} className="card" style={{ marginBottom: "12px" }}>
-              <div style={{ 
-                display: "flex", 
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "8px"
-              }}>
-                <h3 style={{ margin: 0, fontSize: "16px" }}>
-                  {char.firstName || "Unnamed"} {char.lastName || "Character"}
-                </h3>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <span style={{
-                    padding: "4px 8px",
+          characters.map(char => {
+            const courtPos = getCharacterCourtPosition(char.id);
+            const wieldsmercy = courtPos?.position === 'Lord Justiciar';
+            
+            return (
+              <div key={char.id} className="card" style={{ marginBottom: "12px" }}>
+                <div style={{ 
+                  display: "flex", 
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "8px"
+                }}>
+                  <h3 style={{ margin: 0, fontSize: "16px" }}>
+                    {char.firstName || "Unnamed"} {char.lastName || "Character"}
+                  </h3>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    {courtPos ? (
+                      <span style={{
+                        padding: "4px 10px",
+                        background: "#2a2218",
+                        borderRadius: "4px",
+                        border: "1px solid #8B008B",
+                        fontSize: "12px",
+                        color: "#8B008B",
+                        fontWeight: "bold"
+                      }}>
+                        {COURT_POSITIONS[courtPos.position]?.icon} {courtPos.position}
+                      </span>
+                    ) : (
+                      <span style={{
+                        padding: "4px 8px",
+                        background: "#2a2218",
+                        borderRadius: "4px",
+                        border: "1px solid #808080",
+                        fontSize: "12px",
+                        color: "#c7bca5"
+                      }}>
+                        ⚠️ Court Eligible
+                      </span>
+                    )}
+                    <button
+                      onClick={() => deleteNeutralCharacter(char.id)}
+                      className="small"
+                      style={{
+                        background: "#8b3a3a",
+                        border: "1px solid #6d2828",
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Mercy indicator */}
+                {wieldsmercy && (
+                  <div style={{ 
+                    marginBottom: "8px",
+                    padding: "6px 10px",
                     background: "#2a2218",
                     borderRadius: "4px",
-                    border: "1px solid #808080",
+                    border: "1px solid #FFD700",
                     fontSize: "12px",
-                    color: "#c7bca5"
+                    fontStyle: "italic",
+                    color: "#FFD700",
+                    textAlign: "center"
                   }}>
-                    ⚠️ Court Eligible
-                  </span>
-                  <button
-                    onClick={() => deleteNeutralCharacter(char.id)}
-                    className="small"
-                    style={{
-                      background: "#8b3a3a",
-                      border: "1px solid #6d2828",
-                    }}
-                  >
-                    Delete
-                  </button>
+                    ⚔️ Wielder of Mercy (+6 Prowess) ⚔️
+                  </div>
+                )}
+                
+                {char.description && (
+                  <p style={{ fontSize: "12px", color: "#a89a7a", fontStyle: "italic", margin: "8px 0" }}>
+                    {char.description}
+                  </p>
+                )}
+                <div style={{ 
+                  display: "grid", 
+                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gap: "8px",
+                  fontSize: "12px"
+                }}>
+                  <div>Leadership: <strong style={{ color: "#d1b26b" }}>{char.leadership}</strong></div>
+                  <div>
+                    Prowess: <strong style={{ color: "#c77d7d" }}>{char.prowess}</strong>
+                    {wieldsmercy && (
+                      <span style={{ color: "#FFD700", fontWeight: "bold" }}> (+6)</span>
+                    )}
+                  </div>
+                  <div>Stewardship: <strong style={{ color: "#7db5d1" }}>{char.stewardship}</strong></div>
+                  <div>Intrigue: <strong style={{ color: "#9d7dd1" }}>{char.intrigue}</strong></div>
                 </div>
               </div>
-              {char.description && (
-                <p style={{ fontSize: "12px", color: "#a89a7a", fontStyle: "italic", margin: "8px 0" }}>
-                  {char.description}
-                </p>
-              )}
-              <div style={{ 
-                display: "grid", 
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: "8px",
-                fontSize: "12px"
-              }}>
-                <div>Leadership: <strong style={{ color: "#d1b26b" }}>{char.leadership}</strong></div>
-                <div>Prowess: <strong style={{ color: "#c77d7d" }}>{char.prowess}</strong></div>
-                <div>Stewardship: <strong style={{ color: "#7db5d1" }}>{char.stewardship}</strong></div>
-                <div>Intrigue: <strong style={{ color: "#9d7dd1" }}>{char.intrigue}</strong></div>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
@@ -960,6 +1167,7 @@ export default function GMPanel() {
       disabledUpgrades: [],
       notes: "",
       unrest: 0,
+      underSiege: false,
     });
 
     setNewRegionName("");
@@ -1110,7 +1318,11 @@ export default function GMPanel() {
             {regions
               .sort((a, b) => (a.code || "").localeCompare(b.code || ""))
               .map(region => (
-                <div key={region.id} className="card" style={{ padding: "12px" }}>
+                <div key={region.id} className="card" style={{ 
+                  padding: "12px",
+                  background: region.underSiege ? "#3a1a1a" : "#201712",
+                  border: region.underSiege ? "1px solid #8b3a3a" : "1px solid #4c3b2a"
+                }}>
                   <div style={{ 
                     display: "flex", 
                     justifyContent: "space-between",
@@ -1123,6 +1335,20 @@ export default function GMPanel() {
                       <span style={{ marginLeft: "12px", color: "#c7bca5", fontSize: "13px" }}>
                         Owner: {factionNames[region.owner]}
                       </span>
+                      {region.underSiege && (
+                        <span style={{ 
+                          marginLeft: "12px", 
+                          color: "#ff4444", 
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          padding: "2px 8px",
+                          background: "#3a1a1a",
+                          borderRadius: "4px",
+                          border: "1px solid #8b3a3a"
+                        }}>
+                          🏰 UNDER SIEGE
+                        </span>
+                      )}
                     </div>
                     <button 
                       onClick={() => navigate(`/region/${region.id}`)}
@@ -1142,6 +1368,7 @@ export default function GMPanel() {
         <NeutralForces
           armies={neutralArmies}
           characters={neutralCharacters}
+          courtPositions={courtPositions}
           onNavigate={navigate}
         />
       )}
