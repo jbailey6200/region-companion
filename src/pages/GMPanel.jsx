@@ -13,11 +13,13 @@ import {
   setDoc,
   query,
   where,
+  orderBy,
 } from "firebase/firestore";
 import RegionCard from "../components/RegionCard";
 import ArmyCard from "../components/ArmyCard";
 import CharacterCard from "../components/CharacterCard";
 import Court from "../components/Court";
+import GMMissionPanel from "../components/GmMissionPanel";
 import { BUILDING_RULES, HSG_UNITS, LEVY_UPKEEP_PER_UNIT } from "../config/buildingRules";
 import { DEITIES } from "../config/religionRules";
 import { TERRAIN_TYPES, getTerrainFromMapPosition } from "../config/terrainRules";
@@ -165,186 +167,132 @@ function calculateEconomyWithDeity(regions, patronDeity = null) {
     townCount,
     cityCount,
     villageCount,
-    deityBonuses: {
-      gold: deityBonusGold,
-      manpower: deityBonusManpower,
-      hsgCap: deityBonusHSG,
-    },
+    deityBonusGold,
+    deityBonusManpower,
+    deityBonusHSG,
   };
 }
 
-// Calculate unit upkeep with deity bonuses
-function calculateUnitUpkeep(armies, warships, agents, patronDeity) {
+// Calculate upkeeps for a faction
+function calculateUpkeeps(factionArmies, factionData, agents, patronDeity) {
   const deity = patronDeity ? DEITIES[patronDeity] : null;
-  let hsgUpkeep = 0;
-  let levyUpkeep = 0;
-  let navyUpkeep = 0;
-  let agentUpkeep = 0;
   
   // HSG upkeep
-  armies.forEach(army => {
+  let hsgUpkeep = 0;
+  let levyUpkeep = 0;
+  
+  factionArmies.forEach(army => {
     if (army.deleted) return;
-    hsgUpkeep += (army.huscarls || 0) * (deity?.bonuses.huscarlUpkeep || 2);
-    hsgUpkeep += (army.dismountedKnights || 0) * (deity?.bonuses.dismountedKnightUpkeep || 3);
-    hsgUpkeep += (army.mountedKnights || 0) * (deity?.bonuses.mountedKnightUpkeep || 4);
-    hsgUpkeep += (army.lightHorse || 0) * 2;
     
-    // Levy upkeep
-    const levyTotal = (army.levyInfantry || 0) + (army.levyArchers || 0);
-    levyUpkeep += Math.round(levyTotal * LEVY_UPKEEP_PER_UNIT);
+    const huscarlUp = deity?.bonuses.huscarlUpkeep ?? 1;
+    const dkUp = deity?.bonuses.dismountedKnightUpkeep ?? 2;
+    const mkUp = deity?.bonuses.mountedKnightUpkeep ?? 3;
+    
+    hsgUpkeep += (army.huscarls || 0) * huscarlUp;
+    hsgUpkeep += (army.dismountedKnights || 0) * dkUp;
+    hsgUpkeep += (army.mountedKnights || 0) * mkUp;
+    hsgUpkeep += (army.lightHorse || 0) * 1;
+    
+    levyUpkeep += ((army.levyInfantry || 0) + (army.levyArchers || 0)) * 0.25;
   });
   
   // Navy upkeep
-  navyUpkeep = warships * (deity?.bonuses.warshipUpkeep || 3);
+  const warshipUp = deity?.bonuses.warshipUpkeep ?? 3;
+  const navyUpkeep = (factionData?.navy?.warships || 0) * warshipUp;
   
   // Agent upkeep
+  let agentUpkeep = 0;
+  const agitatorUp = deity?.bonuses.agitatorUpkeep ?? 4;
   agents.forEach(agent => {
-    const type = agent.type;
-    if (type === 'spy') agentUpkeep += 1;
-    else if (type === 'agitator') agentUpkeep += deity?.bonuses.agitatorUpkeep || 4;
-    else if (type === 'enforcer') agentUpkeep += 2;
+    if (agent.type === 'spy') agentUpkeep += 1;
+    else if (agent.type === 'agitator') agentUpkeep += agitatorUp;
+    else if (agent.type === 'enforcer') agentUpkeep += 2;
   });
   
-  return { hsgUpkeep, levyUpkeep, navyUpkeep, agentUpkeep };
+  return {
+    hsgUpkeep,
+    levyUpkeep: Math.floor(levyUpkeep),
+    navyUpkeep,
+    agentUpkeep,
+    total: hsgUpkeep + Math.floor(levyUpkeep) + navyUpkeep + agentUpkeep
+  };
 }
 
-// Enhanced Faction Card Component
-function FactionCard({ 
-  factionId, 
-  factionData, 
-  regions, 
-  armies, 
-  agents, 
-  courtPositions,
-  onNavigate 
-}) {
+// Faction Summary Card Component
+function FactionCard({ factionId, factionData, regions, armies, agents, courtPositions, onNavigate }) {
   const faction = factionData[factionId];
-  const patronDeity = faction?.patronDeity;
   const factionRegions = regions.filter(r => r.owner === factionId);
   const factionArmies = armies.filter(a => a.factionId === factionId && !a.deleted);
   const factionAgents = agents.filter(a => a.factionId === factionId);
+  const patronDeity = faction?.patronDeity;
   
-  // Calculate economy with deity bonuses
   const eco = calculateEconomyWithDeity(factionRegions, patronDeity);
-  
-  // Calculate court bonuses
+  const upkeeps = calculateUpkeeps(factionArmies, faction, factionAgents, patronDeity);
   const courtBonuses = getCourtBonuses(courtPositions, factionId);
   
-  // Calculate unit upkeeps
-  const upkeeps = calculateUnitUpkeep(
-    factionArmies, 
-    faction?.navy?.warships || 0,
-    factionAgents,
-    patronDeity
-  );
-  
-  // Calculate totals
-  const totalGold = eco.goldPerTurn + courtBonuses.gold;
-  const totalGoldAfterUpkeep = totalGold - upkeeps.hsgUpkeep - upkeeps.levyUpkeep - 
-                               upkeeps.navyUpkeep - upkeeps.agentUpkeep;
-  
-  // Count units
-  const totalHSGUnits = factionArmies.reduce((sum, a) => 
-    sum + (a.huscarls || 0) + (a.dismountedKnights || 0) + 
-    (a.mountedKnights || 0) + (a.lightHorse || 0), 0);
-  
-  const totalLevyUnits = factionArmies.reduce((sum, a) => 
-    sum + (a.levyInfantry || 0) + (a.levyArchers || 0), 0);
-  
-  const hsgUsed = totalHSGUnits * 10;
+  // Calculate HSG
+  const hsgUsed = factionArmies.reduce((sum, a) => {
+    return sum + (a.huscarls || 0) + (a.dismountedKnights || 0) + 
+           (a.mountedKnights || 0) + (a.lightHorse || 0);
+  }, 0);
   const overCap = hsgUsed > eco.hsgCap;
-
-  // Count sieged regions
-  const siegedRegions = factionRegions.filter(r => r.underSiege).length;
+  
+  // Net gold including court bonuses
+  const totalGoldAfterUpkeep = eco.goldPerTurn + courtBonuses.gold - upkeeps.total;
   
   return (
-    <div className="card" style={{ 
-      padding: "16px",
-      background: "#241b15",
-      marginBottom: "12px"
-    }}>
+    <div 
+      className="card" 
+      style={{ 
+        padding: "16px",
+        background: totalGoldAfterUpkeep < 0 ? "#2a1a1a" : "#201712",
+        border: totalGoldAfterUpkeep < 0 ? "1px solid #5a2a2a" : "1px solid #4c3b2a",
+        cursor: "pointer"
+      }}
+      onClick={() => onNavigate(`/faction/${factionId}`)}
+    >
+      {/* Header */}
       <div style={{ 
         display: "flex", 
         justifyContent: "space-between", 
         alignItems: "center",
-        marginBottom: "12px"
+        marginBottom: "12px",
+        paddingBottom: "8px",
+        borderBottom: "1px solid #4c3b2a"
       }}>
-        <h3 style={{ 
-          margin: 0, 
-          fontSize: "18px",
-          color: "#f4efe4"
-        }}>
-          {faction?.name || `Faction ${factionId}`}
-        </h3>
+        <div>
+          <h3 style={{ margin: 0, fontSize: "16px" }}>
+            {faction?.name || `Faction ${factionId}`}
+          </h3>
+          <span style={{ fontSize: "12px", color: "#a89a7a" }}>
+            {factionRegions.length} regions • {factionArmies.length} armies • {factionAgents.length} agents
+          </span>
+        </div>
         <button 
-          onClick={() => onNavigate(`/faction/${factionId}`)}
-          style={{
-            padding: "6px 12px",
-            background: "#30425d",
-            borderColor: "#4a5d7a",
-            fontSize: "13px"
+          className="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigate(`/faction/${factionId}`);
           }}
         >
-          View as Faction →
+          View →
         </button>
       </div>
       
-      {/* Territory & Military */}
+      {/* Economy Summary */}
       <div style={{ 
         display: "grid", 
         gridTemplateColumns: "1fr 1fr",
-        gap: "12px",
-        marginBottom: "12px",
-        fontSize: "13px"
+        gap: "8px",
+        marginBottom: "8px"
       }}>
         <div>
-          <strong style={{ color: "#d1b26b" }}>Territory</strong>
-          <div>Regions: <strong>{factionRegions.length}</strong>
-            {siegedRegions > 0 && (
-              <span style={{ color: "#ff4444", marginLeft: "6px" }}>
-                ({siegedRegions} under siege)
-              </span>
+          <strong style={{ color: "#d1b26b" }}>Income</strong>
+          <div style={{ fontSize: "13px" }}>
+            Base Gold: <strong>{eco.goldPerTurn}</strong>
+            {courtBonuses.gold > 0 && (
+              <span style={{ color: "#8B008B" }}> +{courtBonuses.gold}</span>
             )}
-          </div>
-          <div>Towns: {eco.townCount} | Cities: {eco.cityCount}</div>
-        </div>
-        
-        <div>
-          <strong style={{ color: "#c77d7d" }}>Military</strong>
-          <div>Armies: <strong>{factionArmies.length}</strong></div>
-          <div>HSG: {totalHSGUnits} | Levies: {totalLevyUnits}</div>
-          <div>Warships: {faction?.navy?.warships || 0}</div>
-        </div>
-      </div>
-      
-      {/* Economy Breakdown */}
-      <div style={{
-        padding: "10px",
-        background: "#1a1410",
-        borderRadius: "6px",
-        fontSize: "12px",
-        marginBottom: "12px"
-      }}>
-        <strong style={{ color: "#FFD700" }}>Economy Breakdown</strong>
-        
-        <div style={{ marginTop: "8px" }}>
-          <div>Base Buildings: <strong>+{eco.goldPerTurn - eco.deityBonuses.gold}</strong></div>
-          {eco.deityBonuses.gold > 0 && (
-            <div style={{ color: "#b5e8a1" }}>
-              Deity Bonus: <strong>+{eco.deityBonuses.gold}</strong>
-            </div>
-          )}
-          {courtBonuses.gold > 0 && (
-            <div style={{ color: "#8B008B" }}>
-              Court Bonus: <strong>+{courtBonuses.gold}</strong>
-            </div>
-          )}
-          <div style={{ 
-            borderTop: "1px solid #4c3b2a", 
-            paddingTop: "4px",
-            marginTop: "4px"
-          }}>
-            Gross Income: <strong style={{ color: "#FFD700" }}>+{totalGold}</strong>
           </div>
         </div>
         
@@ -422,7 +370,7 @@ function FactionCard({
 }
 
 // Neutral Forces Component
-function NeutralForces({ armies, characters, courtPositions, onNavigate }) {
+function NeutralForces({ armies, characters, courtPositions, regions, onNavigate }) {
   const [isCreatingArmy, setIsCreatingArmy] = useState(false);
   const [isCreatingCharacter, setIsCreatingCharacter] = useState(false);
   const [newArmyData, setNewArmyData] = useState({
@@ -448,6 +396,14 @@ function NeutralForces({ armies, characters, courtPositions, onNavigate }) {
   // Get court position for a character
   function getCharacterCourtPosition(charId) {
     return courtPositions.find(p => p.characterId === charId);
+  }
+
+  // Get prowess bonus from court position
+  function getCourtProwessBonus(charId) {
+    const pos = getCharacterCourtPosition(charId);
+    if (!pos) return 0;
+    const config = COURT_POSITIONS[pos.position];
+    return config?.effects?.prowessBonus || 0;
   }
 
   async function createNeutralArmy() {
@@ -548,262 +504,231 @@ function NeutralForces({ armies, characters, courtPositions, onNavigate }) {
         {isCreatingArmy && (
           <div className="card" style={{ marginBottom: "16px", padding: "16px" }}>
             <h3 style={{ marginTop: 0 }}>New Neutral Army</h3>
-            <div style={{ display: "grid", gap: "8px" }}>
-              <input
-                type="text"
-                placeholder="Army Name"
-                value={newArmyData.name}
-                onChange={(e) => setNewArmyData({...newArmyData, name: e.target.value})}
-              />
-              <input
-                type="text"
-                placeholder="Location (Region Code)"
-                value={newArmyData.location}
-                onChange={(e) => setNewArmyData({...newArmyData, location: e.target.value})}
-              />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px" }}>
-                <label style={{ fontSize: "12px" }}>
-                  Huscarls:
-                  <input
-                    type="number"
-                    min="0"
-                    value={newArmyData.huscarls}
-                    onChange={(e) => setNewArmyData({...newArmyData, huscarls: Number(e.target.value)})}
-                    style={{ width: "100%", marginTop: "4px" }}
-                  />
-                </label>
-                <label style={{ fontSize: "12px" }}>
-                  Dismounted Knights:
-                  <input
-                    type="number"
-                    min="0"
-                    value={newArmyData.dismountedKnights}
-                    onChange={(e) => setNewArmyData({...newArmyData, dismountedKnights: Number(e.target.value)})}
-                    style={{ width: "100%", marginTop: "4px" }}
-                  />
-                </label>
-                <label style={{ fontSize: "12px" }}>
-                  Mounted Knights:
-                  <input
-                    type="number"
-                    min="0"
-                    value={newArmyData.mountedKnights}
-                    onChange={(e) => setNewArmyData({...newArmyData, mountedKnights: Number(e.target.value)})}
-                    style={{ width: "100%", marginTop: "4px" }}
-                  />
-                </label>
-                <label style={{ fontSize: "12px" }}>
-                  Light Horse:
-                  <input
-                    type="number"
-                    min="0"
-                    value={newArmyData.lightHorse}
-                    onChange={(e) => setNewArmyData({...newArmyData, lightHorse: Number(e.target.value)})}
-                    style={{ width: "100%", marginTop: "4px" }}
-                  />
-                </label>
-                <label style={{ fontSize: "12px" }}>
-                  Levy Infantry:
-                  <input
-                    type="number"
-                    min="0"
-                    value={newArmyData.levyInfantry}
-                    onChange={(e) => setNewArmyData({...newArmyData, levyInfantry: Number(e.target.value)})}
-                    style={{ width: "100%", marginTop: "4px" }}
-                  />
-                </label>
-                <label style={{ fontSize: "12px" }}>
-                  Levy Archers:
-                  <input
-                    type="number"
-                    min="0"
-                    value={newArmyData.levyArchers}
-                    onChange={(e) => setNewArmyData({...newArmyData, levyArchers: Number(e.target.value)})}
-                    style={{ width: "100%", marginTop: "4px" }}
-                  />
-                </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div>
+                <label style={{ fontSize: "12px" }}>Army Name</label>
+                <input
+                  type="text"
+                  value={newArmyData.name}
+                  onChange={(e) => setNewArmyData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Rebel Forces"
+                  style={{ width: "100%" }}
+                />
               </div>
-              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-                <button onClick={createNeutralArmy} className="green">Create</button>
-                <button onClick={() => setIsCreatingArmy(false)}>Cancel</button>
+              <div>
+                <label style={{ fontSize: "12px" }}>Location</label>
+                <select
+                  value={newArmyData.location}
+                  onChange={(e) => setNewArmyData(prev => ({ ...prev, location: e.target.value }))}
+                  style={{ width: "100%" }}
+                >
+                  <option value="">-- Select Location --</option>
+                  {regions
+                    .sort((a, b) => (a.code || "").localeCompare(b.code || ""))
+                    .map(r => (
+                      <option key={r.id} value={r.code || r.name}>
+                        [{r.code}] {r.name}
+                      </option>
+                    ))}
+                </select>
               </div>
+            </div>
+            <div style={{ display: "flex", gap: "10px", marginTop: "12px" }}>
+              <button onClick={createNeutralArmy} className="green">Create</button>
+              <button onClick={() => setIsCreatingArmy(false)}>Cancel</button>
             </div>
           </div>
         )}
 
-        {armies.length === 0 ? (
-          <p style={{ color: "#888" }}>No neutral armies yet</p>
+        {armies.filter(a => !a.deleted).length === 0 ? (
+          <p style={{ color: "#a89a7a" }}>No neutral armies. Create one to represent rebels, bandits, or NPC forces.</p>
         ) : (
-          armies.map(army => {
+          armies.filter(a => !a.deleted).map(army => {
             const commandersInOther = getCommandersInOtherArmies(army.id);
             const availableCommanders = characters.filter(
               c => !commandersInOther.includes(c.id)
             );
             const currentCommanders = (army.commanders || [])
-              .map(cmdId => characters.find(c => c.id === cmdId))
+              .map(cid => characters.find(c => c.id === cid))
               .filter(Boolean);
 
             return (
-              <div key={army.id} className="card" style={{ marginBottom: "12px" }}>
-                <div style={{ 
-                  display: "flex", 
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "8px"
-                }}>
-                  <h3 style={{ margin: 0, fontSize: "16px" }}>
-                    {army.name || "Unnamed Army"}
-                  </h3>
-                  <button
+              <div key={army.id} className="card" style={{ marginBottom: "12px", padding: "12px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <input
+                      type="text"
+                      value={army.name}
+                      onChange={(e) => updateNeutralArmy(army.id, "name", e.target.value)}
+                      style={{
+                        fontWeight: "bold",
+                        fontSize: "15px",
+                        background: "transparent",
+                        border: "none",
+                        borderBottom: "1px solid #5e4934",
+                        color: "#f4efe4",
+                        padding: "2px 4px",
+                        width: "150px",
+                      }}
+                    />
+                    <select
+                      value={army.location || ""}
+                      onChange={(e) => updateNeutralArmy(army.id, "location", e.target.value)}
+                      style={{
+                        background: "#1a1410",
+                        border: "1px solid #5e4934",
+                        borderRadius: "4px",
+                        color: "#f4efe4",
+                        padding: "4px 8px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      <option value="">-- Location --</option>
+                      {regions
+                        .sort((a, b) => (a.code || "").localeCompare(b.code || ""))
+                        .map(r => (
+                          <option key={r.id} value={r.code || r.name}>
+                            [{r.code}] {r.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <button 
                     onClick={() => deleteNeutralArmy(army.id)}
-                    className="small"
-                    style={{
-                      background: "#8b3a3a",
-                      border: "1px solid #6d2828",
+                    style={{ 
+                      padding: "4px 8px", 
+                      fontSize: "11px",
+                      background: "#3a1a1a",
+                      border: "1px solid #5a2a2a",
+                      color: "#ff6b6b"
                     }}
                   >
                     Delete
                   </button>
                 </div>
-                <p style={{ fontSize: "13px", color: "#c7bca5", margin: "4px 0" }}>
-                  Location: {army.location || "Unknown"}
-                </p>
-                
+
                 {/* Unit counts */}
-                <div style={{ 
-                  display: "grid", 
-                  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                  gap: "8px",
-                  fontSize: "12px",
-                  marginBottom: "12px"
-                }}>
-                  <div>Huscarls: <strong>{army.huscarls || 0}</strong></div>
-                  <div>Dis. Knights: <strong>{army.dismountedKnights || 0}</strong></div>
-                  <div>Mtd. Knights: <strong>{army.mountedKnights || 0}</strong></div>
-                  <div>Light Horse: <strong>{army.lightHorse || 0}</strong></div>
-                  <div>Levy Inf: <strong>{army.levyInfantry || 0}</strong></div>
-                  <div>Levy Arch: <strong>{army.levyArchers || 0}</strong></div>
+                <div style={{ marginTop: "8px", fontSize: "12px", color: "#c7bca5" }}>
+                  HSG: {(army.huscarls || 0) + (army.dismountedKnights || 0) + (army.mountedKnights || 0) + (army.lightHorse || 0)} |
+                  Levies: {(army.levyInfantry || 0) + (army.levyArchers || 0)}
                 </div>
 
-                {/* Commanders Section */}
-                <div style={{
-                  padding: "10px",
-                  background: "#1a1410",
-                  borderRadius: "6px",
-                  border: "1px solid #3a2f24"
+                {/* Unit editing */}
+                <div style={{ 
+                  marginTop: "8px", 
+                  display: "grid", 
+                  gridTemplateColumns: "repeat(6, 1fr)", 
+                  gap: "6px",
+                  fontSize: "11px"
                 }}>
-                  <div style={{ 
-                    fontSize: "12px", 
-                    fontWeight: "bold", 
-                    color: "#d1b26b",
-                    marginBottom: "8px"
-                  }}>
-                    Commanders ({currentCommanders.length}/3)
+                  {[
+                    { key: "huscarls", label: "Husc" },
+                    { key: "dismountedKnights", label: "DK" },
+                    { key: "mountedKnights", label: "MK" },
+                    { key: "lightHorse", label: "LH" },
+                    { key: "levyInfantry", label: "LInf" },
+                    { key: "levyArchers", label: "LArch" },
+                  ].map(unit => (
+                    <div key={unit.key}>
+                      <label style={{ display: "block", color: "#a89a7a" }}>{unit.label}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={army[unit.key] || 0}
+                        onChange={(e) => updateNeutralArmy(army.id, unit.key, Number(e.target.value))}
+                        style={{ width: "100%", padding: "2px 4px" }}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Commander assignment */}
+                <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid #3a2f24" }}>
+                  <div style={{ fontSize: "12px", color: "#a89a7a", marginBottom: "6px" }}>
+                    Commanders:
                   </div>
-                  
-                  {currentCommanders.length > 0 && (
-                    <div style={{ marginBottom: "8px" }}>
+                  {currentCommanders.length > 0 ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
                       {currentCommanders.map(cmd => {
                         const courtPos = getCharacterCourtPosition(cmd.id);
-                        const wieldsmercy = courtPos?.position === 'Lord Justiciar';
-                        
+                        const prowessBonus = getCourtProwessBonus(cmd.id);
                         return (
-                          <div key={cmd.id} style={{
-                            padding: "6px 8px",
-                            background: "#241b15",
-                            borderRadius: "4px",
-                            marginBottom: "4px",
-                            fontSize: "12px"
-                          }}>
-                            <div style={{ fontWeight: "bold" }}>
-                              {cmd.firstName} {cmd.lastName}
-                              {courtPos && (
-                                <span style={{ 
-                                  color: "#8B008B", 
-                                  marginLeft: "8px",
-                                  fontWeight: "normal"
-                                }}>
-                                  ({courtPos.position})
-                                </span>
-                              )}
-                              {wieldsmercy && (
-                                <span style={{ 
-                                  color: "#FFD700", 
-                                  marginLeft: "4px",
-                                  fontStyle: "italic"
-                                }}>
-                                  ⚔️ Mercy
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ color: "#a89a7a", marginTop: "2px" }}>
-                              Lead: {cmd.leadership} | 
-                              Prow: {cmd.prowess}
-                              {wieldsmercy && (
-                                <span style={{ color: "#FFD700", fontWeight: "bold" }}> (+6)</span>
-                              )} | 
-                              Stew: {cmd.stewardship} | 
-                              Intr: {cmd.intrigue}
-                            </div>
+                          <div
+                            key={cmd.id}
+                            style={{
+                              background: "#2a2018",
+                              border: "1px solid #5e4934",
+                              borderRadius: "4px",
+                              padding: "4px 8px",
+                              fontSize: "11px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <span>{cmd.firstName} {cmd.lastName}</span>
+                            <span style={{ color: "#d1b26b" }}>L:{cmd.leadership}</span>
+                            <span style={{ color: "#d17d7d" }}>
+                              P:{cmd.prowess}{prowessBonus > 0 && <span style={{ color: "#8B008B" }}>+{prowessBonus}</span>}
+                            </span>
+                            {courtPos && (
+                              <span style={{ color: "#8B008B", fontSize: "10px" }}>
+                                ({courtPos.position})
+                              </span>
+                            )}
+                            <button
+                              onClick={() => {
+                                const newCmds = (army.commanders || []).filter(id => id !== cmd.id);
+                                updateArmyCommanders(army.id, newCmds);
+                              }}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: "#ff6b6b",
+                                cursor: "pointer",
+                                padding: "0 2px",
+                                fontSize: "12px",
+                              }}
+                            >
+                              ×
+                            </button>
                           </div>
                         );
                       })}
                     </div>
+                  ) : (
+                    <p style={{ fontSize: "11px", color: "#666", margin: "4px 0" }}>No commanders assigned</p>
                   )}
                   
-                  {/* Commander Selection */}
-                  <select
-                    onChange={(e) => {
-                      const charId = e.target.value;
-                      if (!charId) return;
-                      
-                      const currentCmds = army.commanders || [];
-                      if (currentCmds.length >= 3) {
-                        alert("Maximum 3 commanders per army");
-                        return;
-                      }
-                      if (currentCmds.includes(charId)) return;
-                      
-                      updateArmyCommanders(army.id, [...currentCmds, charId]);
-                      e.target.value = "";
-                    }}
-                    style={{
-                      width: "100%",
-                      padding: "6px",
-                      background: "#241b15",
-                      border: "1px solid #4c3b2a",
-                      borderRadius: "4px",
-                      color: "#f4efe4",
-                      fontSize: "12px"
-                    }}
-                  >
-                    <option value="">+ Add Commander...</option>
-                    {availableCommanders
-                      .filter(c => !(army.commanders || []).includes(c.id))
-                      .map(char => {
-                        const courtPos = getCharacterCourtPosition(char.id);
+                  {availableCommanders.length > 0 && (
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const newCmds = [...(army.commanders || []), e.target.value];
+                          updateArmyCommanders(army.id, newCmds);
+                        }
+                      }}
+                      style={{
+                        background: "#1a1410",
+                        border: "1px solid #5e4934",
+                        borderRadius: "4px",
+                        color: "#f4efe4",
+                        padding: "4px 8px",
+                        fontSize: "11px",
+                      }}
+                    >
+                      <option value="">+ Add Commander</option>
+                      {availableCommanders.map(c => {
+                        const courtPos = getCharacterCourtPosition(c.id);
                         return (
-                          <option key={char.id} value={char.id}>
-                            {char.firstName} {char.lastName} 
-                            (L:{char.leadership} P:{char.prowess})
-                            {courtPos ? ` [${courtPos.position}]` : ''}
+                          <option key={c.id} value={c.id}>
+                            {c.firstName} {c.lastName} (L:{c.leadership} P:{c.prowess})
+                            {courtPos ? ` - ${courtPos.position}` : ""}
                           </option>
                         );
                       })}
-                  </select>
-                  
-                  {currentCommanders.length > 0 && (
-                    <button
-                      onClick={() => updateArmyCommanders(army.id, [])}
-                      className="small"
-                      style={{ 
-                        marginTop: "8px", 
-                        width: "100%",
-                        background: "#4a3a2a"
-                      }}
-                    >
-                      Clear All Commanders
-                    </button>
+                    </select>
                   )}
                 </div>
               </div>
@@ -833,174 +758,99 @@ function NeutralForces({ armies, characters, courtPositions, onNavigate }) {
         {isCreatingCharacter && (
           <div className="card" style={{ marginBottom: "16px", padding: "16px" }}>
             <h3 style={{ marginTop: 0 }}>New Neutral Character</h3>
-            <div style={{ display: "grid", gap: "8px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div>
+                <label style={{ fontSize: "12px" }}>First Name</label>
                 <input
                   type="text"
-                  placeholder="First Name"
                   value={newCharData.firstName}
-                  onChange={(e) => setNewCharData({...newCharData, firstName: e.target.value})}
+                  onChange={(e) => setNewCharData(prev => ({ ...prev, firstName: e.target.value }))}
+                  style={{ width: "100%" }}
                 />
+              </div>
+              <div>
+                <label style={{ fontSize: "12px" }}>Last Name</label>
                 <input
                   type="text"
-                  placeholder="Last Name"
                   value={newCharData.lastName}
-                  onChange={(e) => setNewCharData({...newCharData, lastName: e.target.value})}
+                  onChange={(e) => setNewCharData(prev => ({ ...prev, lastName: e.target.value }))}
+                  style={{ width: "100%" }}
                 />
               </div>
-              <textarea
-                placeholder="Description (optional)"
-                value={newCharData.description}
-                onChange={(e) => setNewCharData({...newCharData, description: e.target.value})}
-                style={{ minHeight: "60px" }}
-              />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
-                <label style={{ fontSize: "12px" }}>
-                  Leadership:
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginTop: "12px" }}>
+              {["leadership", "prowess", "stewardship", "intrigue"].map(stat => (
+                <div key={stat}>
+                  <label style={{ fontSize: "11px", textTransform: "capitalize" }}>{stat}</label>
                   <input
                     type="number"
                     min="1"
                     max="10"
-                    value={newCharData.leadership}
-                    onChange={(e) => setNewCharData({...newCharData, leadership: Number(e.target.value)})}
-                    style={{ width: "100%", marginTop: "4px" }}
+                    value={newCharData[stat]}
+                    onChange={(e) => setNewCharData(prev => ({ ...prev, [stat]: Number(e.target.value) }))}
+                    style={{ width: "100%" }}
                   />
-                </label>
-                <label style={{ fontSize: "12px" }}>
-                  Prowess:
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={newCharData.prowess}
-                    onChange={(e) => setNewCharData({...newCharData, prowess: Number(e.target.value)})}
-                    style={{ width: "100%", marginTop: "4px" }}
-                  />
-                </label>
-                <label style={{ fontSize: "12px" }}>
-                  Stewardship:
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={newCharData.stewardship}
-                    onChange={(e) => setNewCharData({...newCharData, stewardship: Number(e.target.value)})}
-                    style={{ width: "100%", marginTop: "4px" }}
-                  />
-                </label>
-                <label style={{ fontSize: "12px" }}>
-                  Intrigue:
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={newCharData.intrigue}
-                    onChange={(e) => setNewCharData({...newCharData, intrigue: Number(e.target.value)})}
-                    style={{ width: "100%", marginTop: "4px" }}
-                  />
-                </label>
-              </div>
-              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-                <button onClick={createNeutralCharacter} className="green">Create</button>
-                <button onClick={() => setIsCreatingCharacter(false)}>Cancel</button>
-              </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: "10px", marginTop: "12px" }}>
+              <button onClick={createNeutralCharacter} className="green">Create</button>
+              <button onClick={() => setIsCreatingCharacter(false)}>Cancel</button>
             </div>
           </div>
         )}
 
         {characters.length === 0 ? (
-          <p style={{ color: "#888" }}>No neutral characters yet</p>
+          <p style={{ color: "#a89a7a" }}>No neutral characters. Create mercenary captains, quest givers, or other NPCs.</p>
         ) : (
           characters.map(char => {
             const courtPos = getCharacterCourtPosition(char.id);
-            const wieldsmercy = courtPos?.position === 'Lord Justiciar';
-            
+            const prowessBonus = getCourtProwessBonus(char.id);
             return (
-              <div key={char.id} className="card" style={{ marginBottom: "12px" }}>
-                <div style={{ 
-                  display: "flex", 
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "8px"
-                }}>
-                  <h3 style={{ margin: 0, fontSize: "16px" }}>
-                    {char.firstName || "Unnamed"} {char.lastName || "Character"}
-                  </h3>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    {courtPos ? (
-                      <span style={{
-                        padding: "4px 10px",
-                        background: "#2a2218",
-                        borderRadius: "4px",
-                        border: "1px solid #8B008B",
-                        fontSize: "12px",
-                        color: "#8B008B",
-                        fontWeight: "bold"
-                      }}>
-                        {COURT_POSITIONS[courtPos.position]?.icon} {courtPos.position}
-                      </span>
-                    ) : (
-                      <span style={{
-                        padding: "4px 8px",
-                        background: "#2a2218",
-                        borderRadius: "4px",
-                        border: "1px solid #808080",
-                        fontSize: "12px",
-                        color: "#c7bca5"
-                      }}>
-                        ⚠️ Court Eligible
-                      </span>
-                    )}
-                    <button
-                      onClick={() => deleteNeutralCharacter(char.id)}
-                      className="small"
-                      style={{
-                        background: "#8b3a3a",
-                        border: "1px solid #6d2828",
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Mercy indicator */}
-                {wieldsmercy && (
-                  <div style={{ 
-                    marginBottom: "8px",
-                    padding: "6px 10px",
-                    background: "#2a2218",
-                    borderRadius: "4px",
-                    border: "1px solid #FFD700",
-                    fontSize: "12px",
-                    fontStyle: "italic",
-                    color: "#FFD700",
-                    textAlign: "center"
-                  }}>
-                    ⚔️ Wielder of Mercy (+6 Prowess) ⚔️
-                  </div>
-                )}
-                
-                {char.description && (
-                  <p style={{ fontSize: "12px", color: "#a89a7a", fontStyle: "italic", margin: "8px 0" }}>
-                    {char.description}
-                  </p>
-                )}
-                <div style={{ 
-                  display: "grid", 
-                  gridTemplateColumns: "repeat(4, 1fr)",
-                  gap: "8px",
-                  fontSize: "12px"
-                }}>
-                  <div>Leadership: <strong style={{ color: "#d1b26b" }}>{char.leadership}</strong></div>
+              <div key={char.id} className="card" style={{ marginBottom: "12px", padding: "12px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
-                    Prowess: <strong style={{ color: "#c77d7d" }}>{char.prowess}</strong>
-                    {wieldsmercy && (
-                      <span style={{ color: "#FFD700", fontWeight: "bold" }}> (+6)</span>
-                    )}
+                    <div style={{ fontWeight: "bold", fontSize: "15px" }}>
+                      {char.firstName} {char.lastName}
+                      {courtPos && (
+                        <span style={{ 
+                          marginLeft: "10px", 
+                          fontSize: "12px", 
+                          color: "#8B008B",
+                          padding: "2px 8px",
+                          background: "#2a1a2a",
+                          borderRadius: "4px"
+                        }}>
+                          {courtPos.position}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#c7bca5", marginTop: "4px" }}>
+                      <div>Leadership: <strong style={{ color: "#d1b26b" }}>{char.leadership}</strong></div>
+                      <div>
+                        Prowess: <strong style={{ color: "#d17d7d" }}>{char.prowess}</strong>
+                        {prowessBonus > 0 && (
+                          <span style={{ color: "#8B008B", marginLeft: "6px" }}>
+                            +{prowessBonus} ({courtPos.position}) = {char.prowess + prowessBonus}
+                          </span>
+                        )}
+                      </div>
+                      <div>Stewardship: <strong style={{ color: "#7db5d1" }}>{char.stewardship}</strong></div>
+                      <div>Intrigue: <strong style={{ color: "#9d7dd1" }}>{char.intrigue}</strong></div>
+                    </div>
                   </div>
-                  <div>Stewardship: <strong style={{ color: "#7db5d1" }}>{char.stewardship}</strong></div>
-                  <div>Intrigue: <strong style={{ color: "#9d7dd1" }}>{char.intrigue}</strong></div>
+                  <button 
+                    onClick={() => deleteNeutralCharacter(char.id)}
+                    style={{ 
+                      padding: "4px 8px", 
+                      fontSize: "11px",
+                      background: "#3a1a1a",
+                      border: "1px solid #5a2a2a",
+                      color: "#ff6b6b"
+                    }}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             );
@@ -1025,12 +875,20 @@ export default function GMPanel() {
   const [neutralArmies, setNeutralArmies] = useState([]);
   const [neutralCharacters, setNeutralCharacters] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [allCharacters, setAllCharacters] = useState([]);
   const [courtPositions, setCourtPositions] = useState([]);
   
   // Region creation states
   const [newRegionName, setNewRegionName] = useState("");
   const [newRegionCode, setNewRegionCode] = useState("");
   const [newRegionOwner, setNewRegionOwner] = useState(1);
+
+  // GM Mailbox states
+  const [gmMessages, setGmMessages] = useState([]);
+  const [gmComposeOpen, setGmComposeOpen] = useState(false);
+  const [gmComposeTo, setGmComposeTo] = useState("1");
+  const [gmComposeBody, setGmComposeBody] = useState("");
+  const [selectedGmMessage, setSelectedGmMessage] = useState(null);
 
   // Check role
   useEffect(() => {
@@ -1140,6 +998,32 @@ export default function GMPanel() {
     return () => unsub();
   }, []);
 
+  // Load ALL characters across all factions
+  useEffect(() => {
+    const unsubscribers = [];
+    
+    for (let factionId = 1; factionId <= 8; factionId++) {
+      const unsub = onSnapshot(
+        collection(db, "factions", String(factionId), "characters"),
+        (snap) => {
+          const factionChars = snap.docs.map(doc => ({
+            id: doc.id,
+            factionId: factionId,
+            ...doc.data(),
+          }));
+          
+          setAllCharacters(prev => {
+            const otherChars = prev.filter(c => c.factionId !== factionId);
+            return [...otherChars, ...factionChars];
+          });
+        }
+      );
+      unsubscribers.push(unsub);
+    }
+    
+    return () => unsubscribers.forEach(unsub => unsub());
+  }, []);
+
   // Load court positions
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "court"), (snap) => {
@@ -1151,6 +1035,59 @@ export default function GMPanel() {
     });
     return () => unsub();
   }, []);
+
+  // Load GM messages (messages sent to GM)
+  useEffect(() => {
+    const messagesRef = collection(db, "messages");
+    const q = query(
+      messagesRef,
+      where("toFactionId", "==", 0),
+      orderBy("createdAt", "desc")
+    );
+    
+    const unsub = onSnapshot(q, (snap) => {
+      const msgs = snap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setGmMessages(msgs);
+    });
+    return () => unsub();
+  }, []);
+
+  // GM message functions
+  async function sendGmMessage() {
+    if (!gmComposeBody.trim()) return;
+    
+    try {
+      await addDoc(collection(db, "messages"), {
+        fromFactionId: 0,
+        fromFactionName: "Game Master",
+        toFactionId: Number(gmComposeTo),
+        toType: "faction",
+        body: gmComposeBody.trim(),
+        createdAt: new Date(),
+        read: false,
+        type: "gm",
+      });
+      
+      setGmComposeBody("");
+      setGmComposeOpen(false);
+    } catch (error) {
+      console.error("Error sending GM message:", error);
+    }
+  }
+
+  async function deleteGmMessage(messageId) {
+    try {
+      await deleteDoc(doc(db, "messages", messageId));
+      setSelectedGmMessage(null);
+    } catch (error) {
+      console.error("Error deleting message:", error);
+    }
+  }
+
+  const gmUnreadCount = gmMessages.filter(m => !m.read).length;
 
   // Create region function
   async function createRegion() {
@@ -1179,7 +1116,7 @@ export default function GMPanel() {
       <div className="container">
         <h1>Access Denied</h1>
         <p>GM access required</p>
-        <button onClick={() => navigate("/")}>← Home</button>
+        <button onClick={() => navigate("/")}>Back to Home</button>
       </div>
     );
   }
@@ -1230,9 +1167,32 @@ export default function GMPanel() {
         <button
           className={`tab ${activeTab === "agents" ? "active" : ""}`}
           onClick={() => setActiveTab("agents")}
-          style={{ opacity: 0.5 }}
         >
-          Agents (Soon)
+          Agent Missions
+        </button>
+        <button
+          className={`tab ${activeTab === "mailbox" ? "active" : ""}`}
+          onClick={() => setActiveTab("mailbox")}
+          style={{ position: "relative" }}
+        >
+          Mailbox
+          {gmUnreadCount > 0 && (
+            <span style={{
+              position: "absolute",
+              top: "-4px",
+              right: "-4px",
+              background: "#ef4444",
+              color: "#fff",
+              fontSize: "10px",
+              fontWeight: "bold",
+              padding: "2px 6px",
+              borderRadius: "10px",
+              minWidth: "16px",
+              textAlign: "center",
+            }}>
+              {gmUnreadCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -1346,7 +1306,7 @@ export default function GMPanel() {
                           borderRadius: "4px",
                           border: "1px solid #8b3a3a"
                         }}>
-                          🏰 UNDER SIEGE
+                          UNDER SIEGE
                         </span>
                       )}
                     </div>
@@ -1369,6 +1329,7 @@ export default function GMPanel() {
           armies={neutralArmies}
           characters={neutralCharacters}
           courtPositions={courtPositions}
+          regions={regions}
           onNavigate={navigate}
         />
       )}
@@ -1385,20 +1346,280 @@ export default function GMPanel() {
         </div>
       )}
 
-      {/* Agents Tab (placeholder) */}
+      {/* Agent Missions Tab */}
       {activeTab === "agents" && (
-        <div className="card" style={{ padding: "40px", textAlign: "center" }}>
-          <h2>Agent Management</h2>
-          <p style={{ color: "#888" }}>
-            Complete agent mission system coming soon...
-          </p>
-          <ul style={{ textAlign: "left", display: "inline-block", color: "#c7bca5", fontSize: "13px" }}>
-            <li>View all agents across factions</li>
-            <li>Assign missions and track progress</li>
-            <li>Agent vs agent interactions</li>
-            <li>Success/failure rolls</li>
-            <li>Complete mission history</li>
-          </ul>
+        <GMMissionPanel
+          factionNames={factionNames}
+          allRegions={regions}
+          allAgents={agents}
+          allCharacters={allCharacters}
+          allArmies={armies}
+        />
+      )}
+
+      {/* GM Mailbox Tab */}
+      {activeTab === "mailbox" && (
+        <div>
+          <div style={{ 
+            display: "flex", 
+            justifyContent: "space-between", 
+            alignItems: "center",
+            marginBottom: "20px"
+          }}>
+            <h2 style={{ margin: 0 }}>📜 Game Master Mailbox</h2>
+            <button 
+              className="green"
+              onClick={() => setGmComposeOpen(true)}
+            >
+              ✉ Send Message to Faction
+            </button>
+          </div>
+
+          {/* GM Compose Modal */}
+          {gmComposeOpen && (
+            <div style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.8)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}>
+              <div style={{
+                background: "#1a1410",
+                border: "2px solid #5e4934",
+                borderRadius: "12px",
+                padding: "24px",
+                maxWidth: "500px",
+                width: "90%",
+              }}>
+                <h3 style={{ marginTop: 0 }}>Send Message as Game Master</h3>
+                
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "13px" }}>
+                    Send To:
+                  </label>
+                  <select
+                    value={gmComposeTo}
+                    onChange={(e) => setGmComposeTo(e.target.value)}
+                    style={{ width: "100%" }}
+                  >
+                    {Object.entries(factionNames).map(([fId, name]) => (
+                      <option key={fId} value={fId}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", marginBottom: "6px", fontSize: "13px" }}>
+                    Message:
+                  </label>
+                  <textarea
+                    value={gmComposeBody}
+                    onChange={(e) => setGmComposeBody(e.target.value)}
+                    placeholder="Write your message to the faction..."
+                    style={{ 
+                      width: "100%", 
+                      minHeight: "100px",
+                      resize: "vertical"
+                    }}
+                  />
+                </div>
+
+                {/* Preview */}
+                {gmComposeBody.trim() && (
+                  <div style={{
+                    background: "#0a0806",
+                    border: "1px solid #3a2f24",
+                    borderRadius: "8px",
+                    padding: "16px",
+                    marginBottom: "16px",
+                  }}>
+                    <div style={{ fontSize: "11px", color: "#a89a7a", marginBottom: "8px" }}>
+                      Preview:
+                    </div>
+                    <p style={{ 
+                      fontStyle: "italic", 
+                      margin: 0,
+                      color: "#f4efe4",
+                      lineHeight: "1.6"
+                    }}>
+                      My Lord, {gmComposeBody.trim()}
+                      <br /><br />
+                      Signed, Game Master
+                    </p>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                  <button onClick={() => {
+                    setGmComposeOpen(false);
+                    setGmComposeBody("");
+                  }}>
+                    Cancel
+                  </button>
+                  <button 
+                    className="green"
+                    onClick={sendGmMessage}
+                    disabled={!gmComposeBody.trim()}
+                  >
+                    Send Message
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Messages received from players */}
+          <h3 style={{ marginBottom: "12px" }}>Messages from Players</h3>
+          
+          {gmMessages.length === 0 ? (
+            <div style={{ 
+              textAlign: "center", 
+              color: "#a89a7a",
+              padding: "40px",
+              background: "#1a1410",
+              borderRadius: "8px",
+              border: "1px solid #3a2f24"
+            }}>
+              <div style={{ fontSize: "48px", marginBottom: "12px" }}>📭</div>
+              <p>No messages from players yet.</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {gmMessages.map(msg => (
+                <div
+                  key={msg.id}
+                  onClick={() => {
+                    setSelectedGmMessage(msg);
+                    if (!msg.read) {
+                      updateDoc(doc(db, "messages", msg.id), { read: true });
+                    }
+                  }}
+                  style={{
+                    padding: "16px",
+                    background: msg.read ? "#1a1410" : "#1f1a14",
+                    border: `1px solid ${msg.read ? "#3a2f24" : "#5e4934"}`,
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    transition: "border-color 0.2s",
+                  }}
+                >
+                  <div style={{ 
+                    display: "flex", 
+                    justifyContent: "space-between",
+                    alignItems: "flex-start"
+                  }}>
+                    <div>
+                      <div style={{ 
+                        fontWeight: msg.read ? "normal" : "bold",
+                        color: msg.read ? "#c7bca5" : "#f4efe4",
+                        marginBottom: "4px"
+                      }}>
+                        From: {msg.fromFactionName || "Unknown"}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#a89a7a" }}>
+                        {msg.createdAt?.toDate?.().toLocaleDateString() || "Unknown date"}
+                      </div>
+                    </div>
+                    {!msg.read && (
+                      <span style={{
+                        background: "#d4a32c",
+                        color: "#000",
+                        fontSize: "10px",
+                        fontWeight: "bold",
+                        padding: "2px 8px",
+                        borderRadius: "4px",
+                      }}>
+                        NEW
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Message Detail Modal */}
+          {selectedGmMessage && (
+            <div style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.8)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}>
+              <div style={{
+                background: "#1a1410",
+                border: "2px solid #5e4934",
+                borderRadius: "12px",
+                padding: "24px",
+                maxWidth: "600px",
+                width: "90%",
+                maxHeight: "80vh",
+                overflow: "auto",
+              }}>
+                <div style={{ 
+                  display: "flex", 
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  marginBottom: "16px"
+                }}>
+                  <div>
+                    <h3 style={{ margin: 0 }}>✉ Message from {selectedGmMessage.fromFactionName}</h3>
+                    <div style={{ fontSize: "12px", color: "#a89a7a", marginTop: "4px" }}>
+                      {selectedGmMessage.createdAt?.toDate?.().toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  background: "#0a0806",
+                  border: "1px solid #3a2f24",
+                  borderRadius: "8px",
+                  padding: "20px",
+                  marginBottom: "16px",
+                }}>
+                  <p style={{ 
+                    fontStyle: "italic", 
+                    margin: 0,
+                    color: "#f4efe4",
+                    lineHeight: "1.6"
+                  }}>
+                    My Lord, {selectedGmMessage.body}
+                    <br /><br />
+                    Signed, {selectedGmMessage.fromFactionName}
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+                  <button 
+                    onClick={() => deleteGmMessage(selectedGmMessage.id)}
+                    style={{ 
+                      background: "#3a2020",
+                      borderColor: "#5a3030"
+                    }}
+                  >
+                    🗑 Delete
+                  </button>
+                  <button onClick={() => setSelectedGmMessage(null)}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
