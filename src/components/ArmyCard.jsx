@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { HSG_UNITS } from "../config/buildingRules";
 import { DEITIES } from "../config/religionRules";
+import { getAdjacentRegions, ARMY_MOVE_RANGE, ARMY_MOVE_RANGE_KURIMBOR } from "../config/hexUtils";
 
 // Helper function for modified upkeep
 function getModifiedUpkeep(unitType, baseUpkeep, patronDeity) {
@@ -114,6 +115,9 @@ export default function ArmyCard({
   const deity = patronDeity ? DEITIES[patronDeity] : null;
   const leadershipBonus = deity?.bonuses.characterLeadership || 0;
   const prowessBonus = deity?.bonuses.characterProwess || 0;
+  
+  // Calculate movement range (Kurimbor deity gives extended range)
+  const moveRange = patronDeity === 'kurimbor' ? ARMY_MOVE_RANGE_KURIMBOR : ARMY_MOVE_RANGE;
 
   // Calculate unit upkeeps with deity bonuses
   const unitData = [
@@ -147,8 +151,13 @@ export default function ArmyCard({
     hasBonus: getModifiedUpkeep(u.key, u.baseUpkeep, patronDeity) !== u.baseUpkeep
   }));
 
+  // Get valid movement destinations (adjacent regions only, or all if no current location)
+  const validMoveDestinations = location
+    ? getAdjacentRegions(location, allRegions)
+    : allRegions;
+  
   // Sort regions for dropdown - by code then by name
-  const sortedRegions = [...allRegions].sort((a, b) => {
+  const sortedRegions = [...validMoveDestinations].sort((a, b) => {
     if (a.code && b.code) return a.code.localeCompare(b.code);
     if (a.code) return -1;
     if (b.code) return 1;
@@ -192,31 +201,50 @@ export default function ArmyCard({
           </div>
           
           {/* Location Dropdown */}
-          <select
-            value={location || ""}
-            disabled={!isOwner}
-            onChange={(e) => onChangeField(id, "location", e.target.value)}
-            style={{
-              marginTop: 4,
-              width: "100%",
-              padding: "6px 10px",
-              borderRadius: 6,
-              border: "1px solid #4c3b2a",
-              background: "#1b130d",
-              color: "#e7dfd2",
-              fontSize: 13,
-              fontFamily: "Georgia, serif",
-              cursor: isOwner ? "pointer" : "not-allowed",
-            }}
-          >
-            <option value="">-- Select Location --</option>
-            {sortedRegions.map(region => (
-              <option key={region.id} value={region.code || region.id}>
-                [{region.code || '??'}] {region.name || 'Unnamed'} 
-                {region.underSiege ? ' 🏰 SIEGE' : ''}
-              </option>
-            ))}
-          </select>
+          <div style={{ marginTop: 4 }}>
+            {location && (
+              <div style={{ 
+                fontSize: 11, 
+                color: "#a89a7a", 
+                marginBottom: 2,
+                display: "flex",
+                alignItems: "center",
+                gap: 6
+              }}>
+                <span>Current: [{location}]</span>
+                <span style={{ color: "#7db5d1" }}>
+                  • Move to adjacent ({sortedRegions.filter(r => r.code !== location).length} options)
+                </span>
+              </div>
+            )}
+            <select
+              value={location || ""}
+              disabled={!isOwner}
+              onChange={(e) => onChangeField(id, "location", e.target.value)}
+              style={{
+                width: "100%",
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: "1px solid #4c3b2a",
+                background: "#1b130d",
+                color: "#e7dfd2",
+                fontSize: 13,
+                fontFamily: "Georgia, serif",
+                cursor: isOwner ? "pointer" : "not-allowed",
+              }}
+            >
+              {!location && <option value="">-- Select Starting Location --</option>}
+              {location && <option value={location}>[{location}] (Current - Stay)</option>}
+              {sortedRegions
+                .filter(r => r.code !== location)
+                .map(region => (
+                <option key={region.id} value={region.code || region.id}>
+                  [{region.code || '??'}] {region.name || 'Unnamed'} 
+                  {region.underSiege ? ' (SIEGE)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* Movement bonus indicator */}
           {deity?.bonuses.armyMovement && (
@@ -231,7 +259,7 @@ export default function ArmyCard({
                 color: "#b5e8a1",
               }}
             >
-              ⚡ Movement: 2 regions per turn (Kurimbor's blessing)
+               Movement: 2 regions per turn (Kurimbor's blessing)
             </div>
           )}
 

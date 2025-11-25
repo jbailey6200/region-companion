@@ -1111,9 +1111,30 @@ export default function Faction() {
                     background: "#3a1a0a",
                     borderRadius: 4,
                     border: "1px solid #8b4513",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
                   }}
                 >
                   REVEALED
+                  {isGM && (
+                    <button
+                      onClick={() => updateAgentField(agent.id, "revealed", false)}
+                      style={{
+                        padding: "1px 4px",
+                        fontSize: 9,
+                        background: "#4a3020",
+                        border: "1px solid #6b4530",
+                        borderRadius: 3,
+                        color: "#f4efe4",
+                        cursor: "pointer",
+                        marginLeft: 2,
+                      }}
+                      title="Hide agent (remove revealed status)"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </span>
               )}
             </div>
@@ -1903,14 +1924,7 @@ export default function Faction() {
       <Toast toasts={toasts} remove={remove} />
 
       {/* HEADER */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-          marginBottom: 20,
-        }}
-      >
+      <div className="faction-header">
         {factionCrest && (
           <img
             src={factionCrest}
@@ -2004,17 +2018,17 @@ export default function Faction() {
             }}
           >
             {regions.length} region
-            {regions.length !== 1 ? "s" : ""} •{" "}
+            {regions.length !== 1 ? "s" : ""} {" "}
             {armies.filter((a) => !a.deleted).length}{" "}
             {armies.filter((a) => !a.deleted).length !== 1
               ? "armies"
               : "army"}{" "}
-            • {characters.length} character
+             {characters.length} character
             {characters.length !== 1 ? "s" : ""}
           </p>
         </div>
         <button onClick={() => navigate("/")}>
-          ← Home
+           Home
         </button>
       </div>
 
@@ -2049,7 +2063,7 @@ export default function Faction() {
             )}
           </p>
           <p
-            title="If you end the turn with negative manpower, you must shut off manpower-consuming buildings until this is ≥ 0."
+            title="If you end the turn with negative manpower, you must shut off manpower-consuming buildings until this is  0."
           >
             Manpower/turn:{" "}
             <strong
@@ -2527,13 +2541,13 @@ export default function Faction() {
             alignItems: "center",
             marginBottom: "20px"
           }}>
-            <h2 style={{ margin: 0 }}>📜 Royal Correspondence</h2>
+            <h2 style={{ margin: 0 }}> Royal Correspondence</h2>
             {isOwnerView && (
               <button 
                 className="green"
                 onClick={() => setComposeOpen(true)}
               >
-                ✉ Compose Message
+                 Compose Message
               </button>
             )}
           </div>
@@ -2658,7 +2672,7 @@ export default function Faction() {
               borderRadius: "8px",
               border: "1px solid #3a2f24"
             }}>
-              <div style={{ fontSize: "48px", marginBottom: "12px" }}>📭</div>
+              <div style={{ fontSize: "48px", marginBottom: "12px" }}></div>
               <p>Your mailbox is empty.</p>
             </div>
           ) : (
@@ -2690,7 +2704,7 @@ export default function Faction() {
                         color: msg.read ? "#c7bca5" : "#f4efe4",
                         marginBottom: "4px"
                       }}>
-                        {msg.type === "mission" ? "📋 Mission Report" : "✉ Message"}: From {msg.fromFactionName || (msg.toType === "gm" ? "System" : "Unknown")}
+                        {msg.type === "mission" ? " Mission Report" : " Message"}: From {msg.fromFactionName || (msg.toType === "gm" ? "System" : "Unknown")}
                       </div>
                       <div style={{ fontSize: "12px", color: "#a89a7a" }}>
                         {msg.createdAt?.toDate?.().toLocaleDateString() || "Unknown date"}
@@ -2746,10 +2760,10 @@ export default function Faction() {
                 }}>
                   <div>
                     <h3 style={{ margin: 0 }}>
-                      {selectedMessage.type === "mission" ? "📋 Mission Report" : "✉ Royal Message"}
+                      {selectedMessage.type === "mission" ? " Mission Report" : " Royal Message"}
                     </h3>
                     <div style={{ fontSize: "12px", color: "#a89a7a", marginTop: "4px" }}>
-                      From: {selectedMessage.fromFactionName || "System"} • {selectedMessage.createdAt?.toDate?.().toLocaleDateString()}
+                      From: {selectedMessage.fromFactionName || "System"}  {selectedMessage.createdAt?.toDate?.().toLocaleDateString()}
                     </div>
                   </div>
                 </div>
@@ -2769,7 +2783,7 @@ export default function Faction() {
                         marginBottom: "12px",
                         fontSize: "16px"
                       }}>
-                        {selectedMessage.success ? "✓ Mission Successful" : "✗ Mission Failed"}
+                        {selectedMessage.success ? " Mission Successful" : " Mission Failed"}
                       </div>
                       <p style={{ 
                         fontStyle: "italic", 
@@ -2779,7 +2793,7 @@ export default function Faction() {
                       }}>
                         My Lord, {selectedMessage.body}
                         <br /><br />
-                        <span style={{ color: "#a89a7a" }}>— Intelligence Report</span>
+                        <span style={{ color: "#a89a7a" }}> Intelligence Report</span>
                       </p>
                     </div>
                   ) : (
@@ -2804,7 +2818,7 @@ export default function Faction() {
                       borderColor: "#5a3030"
                     }}
                   >
-                    🗑 Delete
+                     Delete
                   </button>
                   <button onClick={() => setSelectedMessage(null)}>
                     Close

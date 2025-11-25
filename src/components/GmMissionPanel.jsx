@@ -26,6 +26,7 @@ import {
   MISSION_STATUS,
   DIFFICULTY_MODIFIERS,
 } from "../config/agentMissions";
+import { getAdjacentRegions } from "../config/hexUtils";
 
 export default function GMMissionPanel({ factionNames, allRegions, allAgents }) {
   const [pendingMissions, setPendingMissions] = useState([]);
@@ -156,12 +157,61 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
         await updateDoc(agentRef, { revealed: true, revealedAt: new Date() });
       }
 
+      // Handle Hunt Agents success - auto-reveal enemy agents
+      let revealedAgentNames = [];
+      let revealedRegions = [];
+      if (result.success && mission.missionType === 'HUNT_AGENTS') {
+        // Get adjacent regions including the agent's own location
+        const agentLocation = mission.agentLocation || mission.regionCode;
+        const adjacentRegions = getAdjacentRegions(agentLocation, allRegions);
+        const targetRegionCodes = adjacentRegions.map(r => r.code);
+        
+        // Find enemy agents in those regions
+        const enemyAgentsToReveal = allAgents.filter(agent => 
+          agent.factionId !== mission.factionId &&
+          !agent.deleted &&
+          !agent.revealed &&
+          targetRegionCodes.includes(agent.location)
+        );
+        
+        // Reveal them
+        for (const agent of enemyAgentsToReveal) {
+          const agentRef = doc(db, "agents", agent.id);
+          await updateDoc(agentRef, { 
+            revealed: true, 
+            revealedAt: new Date(),
+            revealedByMission: mission.id 
+          });
+          revealedAgentNames.push(agent.name);
+          if (!revealedRegions.includes(agent.location)) {
+            revealedRegions.push(agent.location);
+          }
+        }
+      }
+
       // Send notification to faction mailbox
       let messageBody = "";
       if (result.success) {
-        messageBody = `Your agent ${mission.agentName} has completed their ${mission.missionName} mission in [${mission.regionCode}] ${mission.regionName}. `;
-        if (effects && effects.length > 0) {
-          messageBody += effects.join(" ");
+        // Include agent's location in the message
+        const agentLocationStr = mission.agentLocation 
+          ? `[${mission.agentLocation}]` 
+          : `[${mission.regionCode}]`;
+        
+        if (mission.missionType === 'HUNT_AGENTS') {
+          messageBody = `Your agent ${mission.agentName} (operating from ${agentLocationStr}) has completed their ${mission.missionName} mission, searching [${mission.regionCode}] ${mission.regionName} and adjacent regions. `;
+          if (revealedAgentNames.length > 0) {
+            messageBody += `Enemy agents discovered: ${revealedAgentNames.join(", ")} in regions: ${revealedRegions.join(", ")}. `;
+          } else {
+            messageBody += `No enemy agents were found in the area. `;
+          }
+          if (result.isCritical) {
+            messageBody += `Agent types and levels have been identified.`;
+          }
+        } else {
+          messageBody = `Your agent ${mission.agentName} has completed their ${mission.missionName} mission in [${mission.regionCode}] ${mission.regionName}. `;
+          if (effects && effects.length > 0) {
+            messageBody += effects.join(" ");
+          }
         }
       } else {
         messageBody = `Your agent ${mission.agentName} has failed their ${mission.missionName} mission in [${mission.regionCode}] ${mission.regionName}. `;
@@ -241,7 +291,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
 
   return (
     <div>
-      <h2 style={{ marginBottom: "20px" }}>🕵 Agent Mission Control</h2>
+      <h2 style={{ marginBottom: "20px" }}> Agent Mission Control</h2>
 
       {/* Roll Result Modal */}
       {lastRollResult && (
@@ -292,7 +342,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
                 <span style={{ color: "#d1b26b" }}>{lastRollResult.missionName}</span>
               </div>
               <div style={{ fontSize: "13px", color: "#a89a7a", marginBottom: "8px" }}>
-                {lastRollResult.agentName} → [{lastRollResult.regionCode}]
+                {lastRollResult.agentName}  [{lastRollResult.regionCode}]
               </div>
               <div style={{ 
                 display: "grid", 
@@ -374,7 +424,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
                 </div>
                 {lastRollResult.effects.map((effect, idx) => (
                   <div key={idx} style={{ color: "#a89a7a", marginLeft: "10px", marginBottom: "4px" }}>
-                    • {effect}
+                     {effect}
                   </div>
                 ))}
               </div>
@@ -439,7 +489,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
                   </div>
                   <div style={{ fontSize: "14px", color: "#a89a7a", marginTop: "4px" }}>
                     Agent: <strong>{mission.agentName}</strong> ({mission.agentType} Lvl {mission.agentLevel})
-                    <span style={{ margin: "0 8px" }}>→</span>
+                    <span style={{ margin: "0 8px" }}></span>
                     [{mission.regionCode}] {mission.regionName}
                   </div>
                   {mission.target && (
@@ -605,7 +655,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
             marginBottom: "16px", 
             color: "#4ade80",
           }}>
-            🎲 Ready to Execute ({approvedMissions.length})
+             Ready to Execute ({approvedMissions.length})
           </h3>
 
           {approvedMissions.map(mission => {
@@ -629,7 +679,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
                     </div>
                     <div style={{ fontSize: "13px", color: "#a89a7a", marginTop: "4px" }}>
                       {mission.agentName} ({mission.agentType} Lvl {mission.agentLevel})
-                      → [{mission.regionCode}] {mission.regionName}
+                       [{mission.regionCode}] {mission.regionName}
                     </div>
                     <div style={{ fontSize: "12px", color: "#c7bca5", marginTop: "4px" }}>
                       Difficulty: <strong>{mission.finalDifficulty}</strong>
@@ -653,7 +703,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
                       cursor: "pointer",
                     }}
                   >
-                    🎲 Roll Mission
+                     Roll Mission
                   </button>
                 </div>
               </div>
@@ -671,7 +721,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
           marginBottom: "16px"
         }}>
           <h3 style={{ fontSize: "18px", margin: 0 }}>
-            📜 Mission Log
+             Mission Log
           </h3>
           {completedMissions.length > 0 && (
             <button
@@ -687,7 +737,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
                 cursor: "pointer",
               }}
             >
-              🗑 Clear Log ({completedMissions.length})
+               Clear Log ({completedMissions.length})
             </button>
           )}
         </div>
@@ -718,7 +768,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
                       }}>
                         {mission.factionName}
                       </span>
-                      <span style={{ color: "#a89a7a" }}>→</span>
+                      <span style={{ color: "#a89a7a" }}></span>
                       <span style={{ color: "#d1b26b" }}>{mission.missionName}</span>
                       <span style={{ color: "#a89a7a" }}>in</span>
                       <span>[{mission.regionCode}]</span>
@@ -726,7 +776,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
                     
                     <div style={{ fontSize: "12px", color: "#a89a7a", marginTop: "4px" }}>
                       {mission.agentName} ({mission.agentType} Lvl {mission.agentLevel})
-                      {mission.target && ` → Target: ${mission.target.name}`}
+                      {mission.target && `  Target: ${mission.target.name}`}
                     </div>
                     
                     {mission.result && (
@@ -760,7 +810,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
                       }}>
                         <div style={{ color: "#4ade80", marginBottom: "4px" }}>Effects:</div>
                         {mission.effects.map((effect, idx) => (
-                          <div key={idx} style={{ color: "#a89a7a", marginLeft: "10px" }}>• {effect}</div>
+                          <div key={idx} style={{ color: "#a89a7a", marginLeft: "10px" }}> {effect}</div>
                         ))}
                       </div>
                     )}

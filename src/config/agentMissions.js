@@ -67,7 +67,7 @@ export const MISSION_TYPES = {
     id: 'hunt_agents',
     name: 'Hunt Enemy Agents',
     agentType: 'enforcer',
-    description: 'Search for enemy agents in this region and all adjacent regions.',
+    description: 'Search for enemy agents in all adjacent regions (including your location). Success reveals all enemy agents found.',
     baseDifficulty: 35,
     levelBonus: 9,
   },
@@ -190,18 +190,18 @@ export function rollD100() {
   OUTCOME TABLE (margin = roll + bonus - difficulty)
   
   For SPIES and AGITATORS:
-    +30 or more  → CRITICAL SUCCESS (success + bonus effects)
-    +15 to +29   → SUCCESS (but REVEALED - mission works but agent exposed)
-    +0 to +14    → SUCCESS (clean - mission works, agent hidden)
-    -1 to -10    → FAILURE (agent stays hidden)
-    -11 to -25   → FAILURE + REVEALED (failed and exposed)
-    -26 or less  → DEATH (agent killed)
+    +30 or more   CRITICAL SUCCESS (success + bonus effects)
+    +15 to +29    SUCCESS (but REVEALED - mission works but agent exposed)
+    +0 to +14     SUCCESS (clean - mission works, agent hidden)
+    -1 to -10     FAILURE (agent stays hidden)
+    -11 to -25    FAILURE + REVEALED (failed and exposed)
+    -26 or less   DEATH (agent killed)
   
   For ENFORCERS:
-    +30 or more  → CRITICAL SUCCESS
-    +0 to +29    → SUCCESS
-    -1 to -15    → FAILURE (agent safe)
-    -16 or less  → DEATH (agent killed)
+    +30 or more   CRITICAL SUCCESS
+    +0 to +29     SUCCESS
+    -1 to -15     FAILURE (agent safe)
+    -16 or less   DEATH (agent killed)
 */
 
 export function determineMissionOutcome(roll, agentBonus, difficulty, agentType) {
@@ -330,7 +330,7 @@ export function getMissionEffects(missionType, outcome, isCritical, context = {}
       
     case 'CAUSE_RIOTS':
       if (isCritical) {
-        effects.push('Settlement downgraded (City→Town, Town→Village, Village→None)');
+        effects.push('Settlement downgraded (CityTown, TownVillage, VillageNone)');
       } else {
         effects.push('Destroy one Farm/Mine or upgraded variant');
       }
@@ -346,9 +346,8 @@ export function getMissionEffects(missionType, outcome, isCritical, context = {}
       break;
       
     case 'HUNT_AGENTS':
-      effects.push('Reveal all enemy agents in target region');
+      effects.push('Reveal all enemy agents in adjacent regions');
       if (isCritical) {
-        effects.push('Reveal enemy agents in all adjacent regions');
         effects.push('Learn agent types and levels');
       }
       break;
@@ -373,12 +372,12 @@ export function getAvailableMissions(agentType) {
 
 // Status colors
 export const OUTCOME_STYLES = {
-  critical_success: { color: '#FFD700', icon: '⭐', label: 'Critical Success' },
-  success: { color: '#4ade80', icon: '✓', label: 'Success' },
-  success_revealed: { color: '#fb923c', icon: '✓👁', label: 'Success (Revealed)' },
-  failure: { color: '#94a3b8', icon: '✗', label: 'Failed' },
-  failure_revealed: { color: '#f97316', icon: '✗👁', label: 'Failed (Revealed)' },
-  death: { color: '#ef4444', icon: '💀', label: 'Agent Killed' },
+  critical_success: { color: '#FFD700', icon: '', label: 'Critical Success' },
+  success: { color: '#4ade80', icon: '', label: 'Success' },
+  success_revealed: { color: '#fb923c', icon: '', label: 'Success (Revealed)' },
+  failure: { color: '#94a3b8', icon: '', label: 'Failed' },
+  failure_revealed: { color: '#f97316', icon: '', label: 'Failed (Revealed)' },
+  death: { color: '#ef4444', icon: '', label: 'Agent Killed' },
 };
 
 // Mission status

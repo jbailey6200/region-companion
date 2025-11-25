@@ -65,6 +65,6 @@ export function getAdjacentRegions(centerCode, allRegions) {
 }
 
 // Range constants
-export const AGENT_ACTION_RANGE = 2;
-export const ARMY_MOVE_RANGE = 1;
+export const AGENT_ACTION_RANGE = 3;
+export const ARMY_MOVE_RANGE = 2;
 export const ARMY_MOVE_RANGE_KURIMBOR = 3;

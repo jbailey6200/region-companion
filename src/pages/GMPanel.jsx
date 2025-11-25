@@ -1134,7 +1134,7 @@ export default function GMPanel() {
           onClick={() => navigate("/")}
           style={{ padding: "8px 16px" }}
         >
-          ← Exit GM Panel
+          ←  Exit GM Panel
         </button>
       </div>
 
