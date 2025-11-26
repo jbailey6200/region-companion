@@ -11,6 +11,7 @@ const SETTLEMENTS = ["Village", "Town", "City"];
 
 export default function RegionCard({ region, eco, role, myFactionId, patronDeity, capital, onSetCapital }) {
   const [expanded, setExpanded] = useState(false);
+  const [showRequirements, setShowRequirements] = useState(false);
   const [notes, setNotes] = useState(region.notes || "");
   const [regionName, setRegionName] = useState(region.name || "");
   const [isEditingName, setIsEditingName] = useState(false);
@@ -180,7 +181,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
       requirements.reasons.push(`Cost: ${BUILDING_RULES.City.buildCost}g (upgrade)`);
     }
 
-    requirements.tooltip = requirements.reasons.join(" · ");
+    requirements.tooltip = requirements.reasons.join(" Â· ");
     return requirements;
   }
 
@@ -427,7 +428,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
   if (mine2Count) summaryParts.push(`${mine2Count} Mine2`);
   if (hasKeep) summaryParts.push("Keep");
   if (hasCastle) summaryParts.push("Castle");
-  const summaryText = summaryParts.length ? summaryParts.join(" · ") : "No buildings";
+  const summaryText = summaryParts.length ? summaryParts.join(" Â· ") : "No buildings";
 
   const villageReqs = getSettlementRequirements("Village");
   const townReqs = getSettlementRequirements("Town");
@@ -616,12 +617,10 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
               </button>
             )}
           </div>
-          <p style={{ margin: 0, fontSize: "14px" }}>
-            <strong>Owner:</strong> {getFactionName(region.owner)} · <strong>Settlement:</strong> {settlement}
-          </p>
           {!expanded && (
-            <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#aaa" }}>
-              {summaryText}
+            <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#c7bca5" }}>
+              {settlement !== "None" ? settlement : "No settlement"}
+              {summaryParts.length > 0 && ` · ${summaryParts.join(" · ")}`}
             </p>
           )}
         </div>
@@ -750,263 +749,458 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
           style={{ marginTop: "16px" }}
           onClick={(e) => e.stopPropagation()}
         >
+          {/* Under Siege Notice */}
+          {underSiege && (
+            <div style={{
+              background: "#2a1515",
+              border: "1px solid #5a2020",
+              borderRadius: "8px",
+              padding: "12px",
+              marginBottom: "16px",
+              fontSize: "13px",
+              color: "#ff8888"
+            }}>
+              ⚠️ This region is under siege. All construction and upgrades are disabled until the siege is lifted.
+            </div>
+          )}
+
+          {/* Collapsible Requirements Section */}
           {isOwner && !underSiege && (
-            <div style={{ 
-              marginBottom: "16px", 
-              padding: "12px", 
+            <div style={{
               background: "#1a1410",
               borderRadius: "8px",
-              border: "1px solid #3a2f24"
+              border: "1px solid #3a2f24",
+              marginBottom: "16px",
+              overflow: "hidden"
             }}>
-              <h3 style={{ fontSize: "14px", marginTop: 0, marginBottom: "8px", color: "#d1b26b" }}>
-                Settlement Requirements
-              </h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "8px", fontSize: "12px" }}>
-                <div>
-                  <strong style={{ color: villageReqs.allowed ? "#b5e8a1" : "#f97373" }}>Village:</strong>
-                  <div style={{ marginTop: "4px", color: "#c7bca5" }}>
-                    {villageReqs.reasons.map((r, i) => (
-                      <div key={i}>{r}</div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <strong style={{ color: townReqs.allowed ? "#b5e8a1" : "#f97373" }}>Town:</strong>
-                  <div style={{ marginTop: "4px", color: "#c7bca5" }}>
-                    {townReqs.reasons.map((r, i) => (
-                      <div key={i}>{r}</div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <strong style={{ color: cityReqs.allowed ? "#b5e8a1" : "#f97373" }}>City:</strong>
-                  <div style={{ marginTop: "4px", color: "#c7bca5" }}>
-                    {cityReqs.reasons.map((r, i) => (
-                      <div key={i}>{r}</div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isGM && (
-            <div className="card" style={{ marginBottom: "12px", padding: "12px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <strong>GM Controls</strong>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    onClick={toggleSiege}
-                    className="small"
-                    style={{ 
-                      background: underSiege ? "#4a6642" : "#5a2020", 
-                      borderColor: underSiege ? "#5a7a52" : "#8b3a3a", 
-                      margin: "0", 
-                      padding: "4px 10px", 
-                      minHeight: "28px" 
-                    }}
-                  >
-                    {underSiege ? "Lift Siege" : " Place Under Siege"}
-                  </button>
-                  <button
-                    onClick={deleteRegion}
-                    className="small"
-                    style={{ background: "#990000", borderColor: "#660000", margin: "0", padding: "4px 10px", minHeight: "28px" }}
-                  >
-                    Delete Region
-                  </button>
-                </div>
-              </div>
-              <label style={{ fontSize: "13px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                <span>Transfer to faction:</span>
-                <select
-                  value={region.owner}
-                  onChange={(e) => changeOwner(e.target.value)}
-                  style={{
-                    padding: "6px",
-                    borderRadius: "6px",
-                    border: "1px solid #555",
-                    background: "#222",
-                    color: "white",
-                  }}
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => (
-                    <option key={f} value={f}>
-                      {getFactionName(f)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
-            <div>
-              <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>
-                Resources (max in {terrainInfo.name})
-              </h3>
+              <button
+                onClick={() => setShowRequirements(!showRequirements)}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: showRequirements ? "1px solid #3a2f24" : "none",
+                  color: "#c7bca5",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  margin: 0,
+                  minHeight: "auto"
+                }}
+              >
+                <span>ℹ️ Settlement & Upgrade Requirements</span>
+                <span style={{ fontSize: "11px" }}>{showRequirements ? "▲" : "▼"}</span>
+              </button>
               
-              {(terrainInfo.bonuses?.length > 0 || terrainInfo.penalties?.length > 0) && (
-                <div style={{ 
-                  fontSize: "12px", 
-                  marginBottom: "10px", 
-                  padding: "6px 8px", 
-                  background: "#1a1410",
-                  borderRadius: "6px",
-                  border: "1px solid #3a2f24"
-                }}>
-                  {terrainInfo.bonuses?.length > 0 && (
-                    <div style={{ color: "#b5e8a1", marginBottom: terrainInfo.penalties?.length > 0 ? "4px" : "0" }}>
-                      + {terrainInfo.bonuses.join(", ")}
+              {showRequirements && (
+                <div style={{ padding: "12px", fontSize: "12px" }}>
+                  <div style={{ 
+                    display: "grid", 
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", 
+                    gap: "12px" 
+                  }}>
+                    {/* Village */}
+                    <div style={{ 
+                      padding: "8px", 
+                      background: "#0a0806", 
+                      borderRadius: "6px",
+                      border: `1px solid ${villageReqs.allowed ? "#3a5a3a" : "#3a2f24"}`
+                    }}>
+                      <div style={{ 
+                        fontWeight: "bold", 
+                        marginBottom: "6px",
+                        color: villageReqs.allowed ? "#b5e8a1" : "#f97373",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px"
+                      }}>
+                        {villageReqs.allowed ? "✓" : "✗"} Village
+                      </div>
+                      <div style={{ color: "#888", lineHeight: "1.4" }}>
+                        {villageReqs.reasons?.length > 0 
+                          ? villageReqs.reasons.map((r, i) => <div key={i}>{r}</div>)
+                          : <div>Available</div>
+                        }
+                      </div>
                     </div>
-                  )}
-                  {terrainInfo.penalties?.length > 0 && (
-                    <div style={{ color: "#f97373" }}>
-                      - {terrainInfo.penalties.join(", ")}
+
+                    {/* Town */}
+                    <div style={{ 
+                      padding: "8px", 
+                      background: "#0a0806", 
+                      borderRadius: "6px",
+                      border: `1px solid ${townReqs.allowed ? "#3a5a3a" : "#3a2f24"}`
+                    }}>
+                      <div style={{ 
+                        fontWeight: "bold", 
+                        marginBottom: "6px",
+                        color: townReqs.allowed ? "#b5e8a1" : "#f97373",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px"
+                      }}>
+                        {townReqs.allowed ? "✓" : "✗"} Town
+                      </div>
+                      <div style={{ color: "#888", lineHeight: "1.4" }}>
+                        {townReqs.reasons?.length > 0 
+                          ? townReqs.reasons.map((r, i) => <div key={i}>{r}</div>)
+                          : <div>Available</div>
+                        }
+                      </div>
+                    </div>
+
+                    {/* City */}
+                    <div style={{ 
+                      padding: "8px", 
+                      background: "#0a0806", 
+                      borderRadius: "6px",
+                      border: `1px solid ${cityReqs.allowed ? "#3a5a3a" : "#3a2f24"}`
+                    }}>
+                      <div style={{ 
+                        fontWeight: "bold", 
+                        marginBottom: "6px",
+                        color: cityReqs.allowed ? "#b5e8a1" : "#f97373",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px"
+                      }}>
+                        {cityReqs.allowed ? "✓" : "✗"} City
+                      </div>
+                      <div style={{ color: "#888", lineHeight: "1.4" }}>
+                        {cityReqs.reasons?.length > 0 
+                          ? cityReqs.reasons.map((r, i) => <div key={i}>{r}</div>)
+                          : <div>Available</div>
+                        }
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Terrain info */}
+                  {(terrainInfo.bonuses?.length > 0 || terrainInfo.penalties?.length > 0) && (
+                    <div style={{ 
+                      marginTop: "12px",
+                      paddingTop: "12px",
+                      borderTop: "1px solid #3a2f24",
+                      color: "#888"
+                    }}>
+                      <div style={{ marginBottom: "4px", color: "#c7bca5" }}>{terrainInfo.name} terrain:</div>
+                      {terrainInfo.bonuses?.map((b, i) => (
+                        <div key={i} style={{ color: "#b5e8a1" }}>+ {b}</div>
+                      ))}
+                      {terrainInfo.penalties?.map((p, i) => (
+                        <div key={i} style={{ color: "#f97373" }}>− {p}</div>
+                      ))}
                     </div>
                   )}
                 </div>
               )}
-              
-              <div style={{ marginBottom: "12px" }}>
-                <div style={{ fontSize: "14px", marginBottom: "4px" }}>
-                  Farms: <strong>{farmCount + farm2Count} / {terrainInfo.maxFarms}</strong>
-                  {farm2Count > 0 && ` (${farm2Count} upgraded)`}
-                </div>
-                {isOwner && !underSiege && (
-                  <div style={{ display: "flex", gap: "3px", flexWrap: "wrap" }}>
-                    <button className="small" onClick={addFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                      + Farm ({BUILDING_RULES.Farm.buildCost}g)
-                    </button>
-                    {farmCount > 0 && (
-                      <button className="small" onClick={upgradeFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                        Upgrade ({BUILDING_RULES.Farm2.buildCost}g)
-                      </button>
-                    )}
-                    {(farmCount > 0 || farm2Count > 0) && (
-                      <button className="small" onClick={removeFarm} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+            </div>
+          )}
 
-              <div>
-                <div style={{ fontSize: "14px", marginBottom: "4px" }}>
-                  Mines: <strong>{mineCount + mine2Count} / {terrainInfo.maxMines}</strong>
-                  {mine2Count > 0 && ` (${mine2Count} upgraded)`}
-                </div>
-                {isOwner && !underSiege && (
-                  <div style={{ display: "flex", gap: "3px", flexWrap: "wrap" }}>
-                    <button className="small" onClick={addMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                      + Mine ({BUILDING_RULES.Mine.buildCost}g)
-                    </button>
-                    {mineCount > 0 && (
-                      <button className="small" onClick={upgradeMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                        Upgrade ({BUILDING_RULES.Mine2.buildCost}g)
-                      </button>
-                    )}
-                    {(mineCount > 0 || mine2Count > 0) && (
-                      <button className="small" onClick={removeMine} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                )}
+          {/* Buildings Grid */}
+          <div style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", 
+            gap: "12px",
+            marginBottom: "16px"
+          }}>
+            {/* Farms Card */}
+            <div style={{
+              background: "#1a1410",
+              borderRadius: "8px",
+              border: "1px solid #3a2f24",
+              padding: "12px"
+            }}>
+              <div style={{ 
+                display: "flex", 
+                justifyContent: "space-between", 
+                alignItems: "center",
+                marginBottom: "8px"
+              }}>
+                <span style={{ fontSize: "14px", color: "#c7bca5" }}>🌾 Farms</span>
+                <strong style={{ fontSize: "16px" }}>
+                  {farmCount + farm2Count} / {terrainInfo.maxFarms}
+                </strong>
               </div>
+              {farm2Count > 0 && (
+                <div style={{ fontSize: "11px", color: "#b5e8a1", marginBottom: "8px" }}>
+                  {farm2Count} upgraded to Farm II
+                </div>
+              )}
+              {isOwner && !underSiege && (
+                <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                  <button 
+                    className="small" 
+                    onClick={addFarm}
+                    disabled={(farmCount + farm2Count) >= terrainInfo.maxFarms}
+                    style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
+                  >
+                    + Add ({BUILDING_RULES.Farm.buildCost}g)
+                  </button>
+                  {farmCount > 0 && (
+                    <button 
+                      className="small" 
+                      onClick={upgradeFarm}
+                      style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
+                    >
+                      ↑ Upgrade ({BUILDING_RULES.Farm2.buildCost}g)
+                    </button>
+                  )}
+                  {(farmCount > 0 || farm2Count > 0) && (
+                    <button 
+                      className="small" 
+                      onClick={removeFarm}
+                      style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
+                    >
+                      −
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div>
-              <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>Fortifications</h3>
-              <div style={{ fontSize: "14px", marginBottom: "4px" }}>
-                Keep: <strong>{hasKeep ? "Yes" : "No"}</strong>
-                {deity?.bonuses.keepHSG && hasKeep && (
-                  <span style={{ fontSize: "12px", color: "#b5e8a1" }}>
-                    {" "}(+{deity.bonuses.keepHSG} HSG capacity)
-                  </span>
-                )}
+            {/* Mines Card */}
+            <div style={{
+              background: "#1a1410",
+              borderRadius: "8px",
+              border: "1px solid #3a2f24",
+              padding: "12px"
+            }}>
+              <div style={{ 
+                display: "flex", 
+                justifyContent: "space-between", 
+                alignItems: "center",
+                marginBottom: "8px"
+              }}>
+                <span style={{ fontSize: "14px", color: "#c7bca5" }}>⛏️ Mines</span>
+                <strong style={{ fontSize: "16px" }}>
+                  {mineCount + mine2Count} / {terrainInfo.maxMines}
+                </strong>
               </div>
-              <div style={{ fontSize: "14px", marginBottom: "4px" }}>
-                Castle: <strong>{hasCastle ? "Yes" : "No"}</strong>
-                {deity?.bonuses.castleHSG && hasCastle && (
-                  <span style={{ fontSize: "12px", color: "#b5e8a1" }}>
-                    {" "}(+{deity.bonuses.castleHSG} HSG capacity)
-                  </span>
-                )}
-              </div>
+              {mine2Count > 0 && (
+                <div style={{ fontSize: "11px", color: "#b5e8a1", marginBottom: "8px" }}>
+                  {mine2Count} upgraded to Mine II
+                </div>
+              )}
               {isOwner && !underSiege && (
-                <div style={{ display: "flex", gap: "3px", flexWrap: "wrap", marginTop: "6px" }}>
-                  {!hasKeep && (
-                    <button className="small" onClick={toggleKeep} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                      Add Keep (
-                      {keepCost < keepBaseCost ? (
-                        <>
-                          <span style={{ textDecoration: "line-through", opacity: 0.5 }}>{keepBaseCost}</span>
-                          <span style={{ color: "#b5e8a1", fontWeight: "bold" }}> {keepCost}</span>
-                        </>
-                      ) : (
-                        keepBaseCost
-                      )}
-                      g)
+                <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                  <button 
+                    className="small" 
+                    onClick={addMine}
+                    disabled={(mineCount + mine2Count) >= terrainInfo.maxMines}
+                    style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
+                  >
+                    + Add ({BUILDING_RULES.Mine.buildCost}g)
+                  </button>
+                  {mineCount > 0 && (
+                    <button 
+                      className="small" 
+                      onClick={upgradeMine}
+                      style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
+                    >
+                      ↑ Upgrade ({BUILDING_RULES.Mine2.buildCost}g)
+                    </button>
+                  )}
+                  {(mineCount > 0 || mine2Count > 0) && (
+                    <button 
+                      className="small" 
+                      onClick={removeMine}
+                      style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
+                    >
+                      −
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Fortification Card */}
+            <div style={{
+              background: "#1a1410",
+              borderRadius: "8px",
+              border: "1px solid #3a2f24",
+              padding: "12px"
+            }}>
+              <div style={{ 
+                display: "flex", 
+                justifyContent: "space-between", 
+                alignItems: "center",
+                marginBottom: "8px"
+              }}>
+                <span style={{ fontSize: "14px", color: "#c7bca5" }}>🏰 Fortification</span>
+                <strong style={{ fontSize: "16px" }}>
+                  {hasCastle ? "Castle" : hasKeep ? "Keep" : "None"}
+                </strong>
+              </div>
+              {(hasKeep || hasCastle) && deity?.bonuses.keepHSG && (
+                <div style={{ fontSize: "11px", color: "#b5e8a1", marginBottom: "8px" }}>
+                  +{hasCastle ? (deity.bonuses.castleHSG || 0) : deity.bonuses.keepHSG} HSG capacity (deity)
+                </div>
+              )}
+              {isOwner && !underSiege && (
+                <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                  {!hasKeep && !hasCastle && (
+                    <button 
+                      className="small" 
+                      onClick={toggleKeep}
+                      style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
+                    >
+                      + Keep ({keepCost !== keepBaseCost ? (
+                        <><s style={{ opacity: 0.5 }}>{keepBaseCost}</s> <span style={{ color: "#b5e8a1" }}>{keepCost}</span></>
+                      ) : keepBaseCost}g)
                     </button>
                   )}
                   {hasKeep && !hasCastle && (
                     <>
-                      <button className="small" onClick={upgradeToCastle} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                        Upgrade to Castle (
-                        {castleCost < castleBaseCost ? (
-                          <>
-                            <span style={{ textDecoration: "line-through", opacity: 0.5 }}>{castleBaseCost}</span>
-                            <span style={{ color: "#b5e8a1", fontWeight: "bold" }}> {castleCost}</span>
-                          </>
-                        ) : (
-                          castleBaseCost
-                        )}
-                        g)
+                      <button 
+                        className="small" 
+                        onClick={upgradeToCastle}
+                        style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
+                      >
+                        ↑ Castle ({castleCost !== castleBaseCost ? (
+                          <><s style={{ opacity: 0.5 }}>{castleBaseCost}</s> <span style={{ color: "#b5e8a1" }}>{castleCost}</span></>
+                        ) : castleBaseCost}g)
                       </button>
-                      <button className="small" onClick={toggleKeep} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                        Remove Keep
+                      <button 
+                        className="small" 
+                        onClick={toggleKeep}
+                        style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
+                      >
+                        −
                       </button>
                     </>
                   )}
                   {hasCastle && (
-                    <button className="small" onClick={removeCastle} style={{ margin: "2px 0", padding: "3px 8px", minHeight: "26px" }}>
-                      Remove Castle
+                    <button 
+                      className="small" 
+                      onClick={removeCastle}
+                      style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
+                    >
+                      − Remove
                     </button>
                   )}
                 </div>
               )}
             </div>
+          </div>
 
-            <div>
-              <h3 style={{ fontSize: "16px", marginTop: 0, marginBottom: "8px" }}>Notes</h3>
-              {isOwner ? (
-                <>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    style={{
-                      width: "100%",
-                      height: "80px",
-                      background: "#222",
-                      color: "white",
-                      padding: "8px",
-                      borderRadius: "6px",
-                      border: "1px solid #444",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                  <button onClick={saveNotes} className="small" style={{ marginTop: "4px", margin: "4px 0 0 0", padding: "3px 8px", minHeight: "26px" }}>
-                    Save Notes
-                  </button>
-                </>
-              ) : (
-                <p style={{ fontSize: "13px", margin: 0 }}>{notes || "No notes."}</p>
+          {/* Notes Section */}
+          <div style={{
+            background: "#1a1410",
+            borderRadius: "8px",
+            border: "1px solid #3a2f24",
+            padding: "12px",
+            marginBottom: isGM ? "16px" : "0"
+          }}>
+            <div style={{ 
+              display: "flex", 
+              justifyContent: "space-between", 
+              alignItems: "center",
+              marginBottom: "8px"
+            }}>
+              <span style={{ fontSize: "14px", color: "#c7bca5" }}>📝 Notes</span>
+              {isOwner && (
+                <button 
+                  onClick={saveNotes} 
+                  className="small" 
+                  style={{ margin: 0, padding: "4px 10px", minHeight: "26px", fontSize: "12px" }}
+                >
+                  Save
+                </button>
               )}
             </div>
+            {isOwner ? (
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add notes about this region..."
+                style={{
+                  width: "100%",
+                  height: "60px",
+                  background: "#0a0806",
+                  color: "#f4efe4",
+                  padding: "8px",
+                  borderRadius: "6px",
+                  border: "1px solid #3a2f24",
+                  fontSize: "13px",
+                  boxSizing: "border-box",
+                  resize: "vertical"
+                }}
+              />
+            ) : (
+              <p style={{ fontSize: "13px", margin: 0, color: notes ? "#f4efe4" : "#666" }}>
+                {notes || "No notes."}
+              </p>
+            )}
           </div>
+
+          {/* GM Controls - Compact footer */}
+          {isGM && (
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "12px",
+              background: "#1a1410",
+              borderRadius: "8px",
+              border: "1px solid #3a2f24",
+              flexWrap: "wrap",
+              gap: "12px"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "12px", color: "#888" }}>GM:</span>
+                <select
+                  value={region.owner}
+                  onChange={(e) => changeOwner(e.target.value)}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: "6px",
+                    border: "1px solid #3a2f24",
+                    background: "#0a0806",
+                    color: "#f4efe4",
+                    fontSize: "12px"
+                  }}
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((f) => (
+                    <option key={f} value={f}>{getFactionName(f)}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={toggleSiege}
+                  className="small"
+                  style={{ 
+                    margin: 0,
+                    padding: "4px 12px",
+                    minHeight: "28px",
+                    fontSize: "12px",
+                    background: underSiege ? "#2a4a2a" : "#4a2a2a", 
+                    borderColor: underSiege ? "#3a6a3a" : "#6a3a3a"
+                  }}
+                >
+                  {underSiege ? "✓ Lift Siege" : "⚔ Siege"}
+                </button>
+                <button
+                  onClick={deleteRegion}
+                  className="small"
+                  style={{ 
+                    margin: 0,
+                    padding: "4px 12px",
+                    minHeight: "28px",
+                    fontSize: "12px",
+                    background: "#4a1a1a", 
+                    borderColor: "#6a2a2a"
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

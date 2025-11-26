@@ -86,6 +86,12 @@ function calculateEconomy(regions, patronDeity = null) {
   let levyInfTotal = 0;
   let levyArchTotal = 0;
 
+  // Income breakdown tracking
+  let settlementGold = 0;
+  let mineGold = 0;
+  let fortificationCost = 0;
+  let deityGold = 0;
+
   let townCountTotal = 0;
   let cityCountTotal = 0;
   let villageCountTotal = 0;
@@ -139,12 +145,31 @@ function calculateEconomy(regions, patronDeity = null) {
       let hsgCap = rule.hsgCap || 0;
       let levyArch = rule.levyArch || 0;
 
-      if (deity) {
-        if (deity.bonuses.townGold && name === "Town") gold += deity.bonuses.townGold;
-        if (deity.bonuses.cityGold && name === "City") gold += deity.bonuses.cityGold;
+      // Track base gold by source before deity bonuses
+      if (name === "Village" || name === "Town" || name === "City") {
+        settlementGold += (rule.gold || 0) * count;
+      }
+      if (name === "Mine" || name === "Mine2") {
+        mineGold += (rule.gold || 0) * count;
+      }
+      if (name === "Keep" || name === "Castle") {
+        fortificationCost += Math.abs(rule.gold || 0) * count;
+      }
 
-        if (deity.bonuses.mineGold && (name === "Mine" || name === "Mine2"))
+      if (deity) {
+        if (deity.bonuses.townGold && name === "Town") {
+          gold += deity.bonuses.townGold;
+          deityGold += deity.bonuses.townGold * count;
+        }
+        if (deity.bonuses.cityGold && name === "City") {
+          gold += deity.bonuses.cityGold;
+          deityGold += deity.bonuses.cityGold * count;
+        }
+
+        if (deity.bonuses.mineGold && (name === "Mine" || name === "Mine2")) {
           gold += deity.bonuses.mineGold;
+          deityGold += deity.bonuses.mineGold * count;
+        }
 
         if (deity.bonuses.settlementManpower &&
           (name === "Village" || name === "Town" || name === "City"))
@@ -177,14 +202,22 @@ function calculateEconomy(regions, patronDeity = null) {
 
     // Terrain bonuses
     if (deity) {
-      if (terrain === TERRAIN_TYPES.RIVER && deity.bonuses.riverGold)
+      if (terrain === TERRAIN_TYPES.RIVER && deity.bonuses.riverGold) {
         regionGold += deity.bonuses.riverGold;
-      if ((terrain === TERRAIN_TYPES.MOUNTAINS || terrain === TERRAIN_TYPES.HILLS) && deity.bonuses.mountainHillsGold)
+        deityGold += deity.bonuses.riverGold;
+      }
+      if ((terrain === TERRAIN_TYPES.MOUNTAINS || terrain === TERRAIN_TYPES.HILLS) && deity.bonuses.mountainHillsGold) {
         regionGold += deity.bonuses.mountainHillsGold;
-      if (terrain === TERRAIN_TYPES.COAST && deity.bonuses.coastalGold)
+        deityGold += deity.bonuses.mountainHillsGold;
+      }
+      if (terrain === TERRAIN_TYPES.COAST && deity.bonuses.coastalGold) {
         regionGold += deity.bonuses.coastalGold;
-      if (terrain === TERRAIN_TYPES.MOUNTAINS && deity.bonuses.mountainGold)
+        deityGold += deity.bonuses.coastalGold;
+      }
+      if (terrain === TERRAIN_TYPES.MOUNTAINS && deity.bonuses.mountainGold) {
         regionGold += deity.bonuses.mountainGold;
+        deityGold += deity.bonuses.mountainGold;
+      }
     }
 
     goldTotal += regionGold;
@@ -210,6 +243,13 @@ function calculateEconomy(regions, patronDeity = null) {
     townCount: townCountTotal,
     cityCount: cityCountTotal,
     villageCount: villageCountTotal,
+    // Income breakdown
+    incomeBreakdown: {
+      settlements: settlementGold,
+      mines: mineGold,
+      fortifications: fortificationCost,
+      deity: deityGold,
+    },
     deityBonuses: patronDeity
       ? {
           riverRegions: riverRegionCount,
@@ -269,6 +309,7 @@ export default function Faction() {
   const [allRegions, setAllRegions] = useState([]);
   const [eco, setEco] = useState(null);
   const [activeTab, setActiveTab] = useState("regions");
+  const [agentSubTab, setAgentSubTab] = useState("roster"); // "roster" or "missions"
 
   const [factionData, setFactionData] = useState(null);
   const [armies, setArmies] = useState([]);
@@ -2068,208 +2109,109 @@ export default function Faction() {
         </button>
       </div>
 
-      {/* SUMMARY CARDS */}
+      {/* SUMMARY CARDS - 2 consolidated cards */}
       <div className="summary-row">
+        {/* ECONOMY CARD */}
         <div className="summary-card">
-          <h3>Buildings Economy</h3>
-          <p>
-            Gold/turn:{" "}
-            <strong>{eco?.goldPerTurn || 0}</strong>
-            {eco?.courtBonuses?.length > 0 && (
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "#8B008B",
-                }}
-              >
-                {" "}
-                (includes court bonuses)
-              </span>
+          <h3>Economy</h3>
+          {/* Income breakdown */}
+          <div style={{ fontSize: 12, color: "#888", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #3a2f24" }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Settlements:</span>
+              <span style={{ color: "#b5e8a1" }}>+{eco?.incomeBreakdown?.settlements || 0}g</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Mines:</span>
+              <span style={{ color: "#b5e8a1" }}>+{eco?.incomeBreakdown?.mines || 0}g</span>
+            </div>
+            {courtBonuses.gold > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#8B008B" }}>Court:</span>
+                <span style={{ color: "#8B008B" }}>+{courtBonuses.gold}g</span>
+              </div>
             )}
-            {deity && (
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "#b5e8a1",
-                }}
-              >
-                {" "}
-                (includes deity bonuses)
-              </span>
+            {(eco?.incomeBreakdown?.deity || 0) > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#b5e8a1" }}>Religion:</span>
+                <span style={{ color: "#b5e8a1" }}>+{eco?.incomeBreakdown?.deity || 0}g</span>
+              </div>
             )}
-          </p>
-          <p
-            title="If you end the turn with negative manpower, you must shut off manpower-consuming buildings until this is  0."
-          >
-            Manpower/turn:{" "}
-            <strong
-              style={{
-                color: (eco?.manpowerNet || 0) < 0 ? "#ff4444" : "#b5e8a1",
-              }}
-            >
+            {(eco?.incomeBreakdown?.fortifications || 0) > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Fortifications:</span>
+                <span style={{ color: "#f97373" }}>-{eco?.incomeBreakdown?.fortifications || 0}g</span>
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+            <span style={{ color: "#c7bca5" }}>Gross Income:</span>
+            <strong>{eco?.goldPerTurn || 0}g</strong>
+          </div>
+          {/* Upkeep breakdown */}
+          <div style={{ fontSize: 12, color: "#888", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #3a2f24" }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>HSG troops:</span>
+              <span>-{hsgGoldUpkeep}g</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Levies:</span>
+              <span>-{levyGoldUpkeep}g</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Warships:</span>
+              <span>-{navyGoldUpkeep}g</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Agents:</span>
+              <span>-{totalAgentUpkeep}g</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <span style={{ fontWeight: "bold" }}>Net Gold/turn:</span>
+            <strong style={{ fontSize: 18 }} className={goldNegative ? "warning" : "ok"}>
+              {netGoldPerTurn}g
+            </strong>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 8, paddingTop: 8, borderTop: "1px solid #3a2f24" }}>
+            <span style={{ color: "#c7bca5" }}>Manpower:</span>
+            <strong style={{ color: (eco?.manpowerNet || 0) < 0 ? "#ff4444" : "#b5e8a1" }}>
               {eco?.manpowerNet || 0}
             </strong>
-          </p>
+          </div>
         </div>
 
+        {/* MILITARY CAPACITY CARD */}
         <div className="summary-card">
-          <h3>HSG Capacity</h3>
-          <p>
-            HSG:{" "}
-            <strong
-              style={{
-                color: overCap ? "#ff4444" : "#b5e8a1",
-              }}
-            >
+          <h3>Military Capacity</h3>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #3a2f24" }}>
+            <span style={{ color: "#c7bca5" }}>HSG:</span>
+            <strong style={{ color: overCap ? "#ff4444" : "#b5e8a1" }}>
               {hsgUsed} / {hsgCap}
+              {overCap && <span style={{ fontSize: 11, marginLeft: 4 }}>OVER!</span>}
             </strong>
-            {overCap && (
-              <span
-                style={{
-                  color: "#ff4444",
-                  fontSize: 12,
-                }}
-              >
-                {" "}
-                OVER CAP!
+          </div>
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+              <span style={{ color: "#c7bca5" }}>Levy Infantry:</span>
+              <span>
+                <strong>{totalLevyInfantryUnits}</strong>
+                <span style={{ color: "#888" }}> / {levyInfPotential}</span>
+                {deity?.bonuses.levyInfantryCF && (
+                  <span style={{ fontSize: 10, color: "#b5e8a1", marginLeft: 4 }}>+1 CF</span>
+                )}
               </span>
-            )}
-          </p>
-          <p
-            style={{
-              fontSize: 12,
-              color: "#c7bca5",
-            }}
-          >
-            Each HSG unit represents 10 men.
-          </p>
-        </div>
-
-        <div className="summary-card">
-          <h3>Net Gold</h3>
-          <p>
-            HSG upkeep: {hsgGoldUpkeep}
-            {(deity?.bonuses.huscarlUpkeep ||
-              deity?.bonuses
-                .dismountedKnightUpkeep ||
-              deity?.bonuses
-                .mountedKnightUpkeep) && (
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "#b5e8a1",
-                }}
-              >
-                {" "}
-                *
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span style={{ color: "#c7bca5" }}>Levy Archers:</span>
+              <span>
+                <strong>{totalLevyArcherUnits}</strong>
+                <span style={{ color: "#888" }}> / {levyArchPotential}</span>
+                {deity?.bonuses.farmLevyBonus && (
+                  <span style={{ fontSize: 10, color: "#b5e8a1", marginLeft: 4 }}>Altaea</span>
+                )}
               </span>
-            )}
-          </p>
-          <p>Levies upkeep: {levyGoldUpkeep}</p>
-          <p>
-            Warship upkeep: {navyGoldUpkeep}
-            {deity?.bonuses.warshipUpkeep && (
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "#b5e8a1",
-                }}
-              >
-                {" "}
-                *
-              </span>
-            )}
-          </p>
-          <p>
-            Agent upkeep: {totalAgentUpkeep}
-            {deity?.bonuses.agitatorUpkeep && (
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "#b5e8a1",
-                }}
-              >
-                {" "}
-                *
-              </span>
-            )}
-          </p>
-          {courtBonuses.positions.length > 0 && (
-            <>
-              <p style={{ borderTop: "1px solid #4c3b2a", paddingTop: 4, marginTop: 4, fontSize: 12, color: "#8B008B" }}>
-                Court Bonuses:
-              </p>
-              {courtBonuses.positions.map((pos, idx) => (
-                <p key={idx} style={{ fontSize: 11, color: "#8B008B", marginLeft: 10, margin: "2px 0 2px 10px" }}>
-                  {pos.icon} {pos.name}: +{pos.goldBonus}
-                </p>
-              ))}
-            </>
-          )}
-          <p title="If negative, disband units first; then shut off gold-costing buildings.">
-            Net Gold/turn:{" "}
-            <strong
-              className={
-                goldNegative ? "warning" : "ok"
-              }
-            >
-              {netGoldPerTurn}
-            </strong>
-          </p>
-        </div>
-
-        <div className="summary-card">
-          <h3>Farms, Mines, Levies</h3>
-          <p>
-            Farms (eq):{" "}
-            <strong>{eco?.farmEquivalent ?? 0}</strong>
-          </p>
-          <p>
-            Mines (eq):{" "}
-            <strong>{eco?.mineEquivalent ?? 0}</strong>
-          </p>
-          <p>
-            Levy Inf Potential:{" "}
-            <strong>{levyInfPotential}</strong>
-            {deity?.bonuses.levyInfantryCF && (
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "#b5e8a1",
-                }}
-              >
-                {" "}
-                (+1 CF)
-              </span>
-            )}
-          </p>
-          <p>
-            Levy Inf Raised:{" "}
-            <strong>
-              {totalLevyInfantryUnits} units
-            </strong>
-          </p>
-          <p>
-            Levy Arch Potential:{" "}
-            <strong>{levyArchPotential}</strong>
-            {deity?.bonuses.farmLevyBonus && (
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "#b5e8a1",
-                }}
-              >
-                {" "}
-                (Altaea)
-              </span>
-            )}
-          </p>
-          <p>
-            Levy Arch Raised:{" "}
-            <strong>
-              {totalLevyArcherUnits} units
-            </strong>
-          </p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2298,14 +2240,6 @@ export default function Faction() {
           onClick={() => setActiveTab("agents")}
         >
           Agents
-        </button>
-        <button
-          className={`tab ${
-            activeTab === "missions" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("missions")}
-        >
-          Missions
         </button>
         <button
           className={`tab ${
@@ -2549,25 +2483,66 @@ export default function Faction() {
         </>
       )}
 
-      {/* AGENTS TAB */}
-      {activeTab === "agents" && renderAgentsTab()}
+      {/* AGENTS TAB (combined with Missions) */}
+      {activeTab === "agents" && (
+        <>
+          {/* Sub-tab toggle */}
+          <div style={{ 
+            display: "flex", 
+            gap: 8, 
+            marginBottom: 16,
+            borderBottom: "1px solid #3a2f24",
+            paddingBottom: 12
+          }}>
+            <button
+              onClick={() => setAgentSubTab("roster")}
+              style={{
+                padding: "8px 16px",
+                background: agentSubTab === "roster" ? "#30425d" : "transparent",
+                border: agentSubTab === "roster" ? "1px solid #d1b26b" : "1px solid #5e4934",
+                borderRadius: 6,
+                color: agentSubTab === "roster" ? "#f9f4e6" : "#c7bca5",
+                cursor: "pointer",
+                fontSize: 14,
+              }}
+            >
+              Agent Roster
+            </button>
+            <button
+              onClick={() => setAgentSubTab("missions")}
+              style={{
+                padding: "8px 16px",
+                background: agentSubTab === "missions" ? "#30425d" : "transparent",
+                border: agentSubTab === "missions" ? "1px solid #d1b26b" : "1px solid #5e4934",
+                borderRadius: 6,
+                color: agentSubTab === "missions" ? "#f9f4e6" : "#c7bca5",
+                cursor: "pointer",
+                fontSize: 14,
+              }}
+            >
+              Missions
+            </button>
+          </div>
 
-      {/* MISSIONS TAB */}
-      {activeTab === "missions" && (
-        <AgentMissions
-          factionId={Number(id)}
-          factionName={factionData?.name || `Faction ${id}`}
-          agents={agents.filter(a => !a.deleted)}
-          allRegions={allRegions}
-          allArmies={allArmies.filter(a => !a.deleted)}
-          allCharacters={allCharacters}
-          revealedEnemyAgents={allAgents.filter(a => 
-            a.revealed && 
-            a.factionId !== Number(id) && 
-            !a.deleted
+          {/* Sub-tab content */}
+          {agentSubTab === "roster" && renderAgentsTab()}
+          {agentSubTab === "missions" && (
+            <AgentMissions
+              factionId={Number(id)}
+              factionName={factionData?.name || `Faction ${id}`}
+              agents={agents.filter(a => !a.deleted)}
+              allRegions={allRegions}
+              allArmies={allArmies.filter(a => !a.deleted)}
+              allCharacters={allCharacters}
+              revealedEnemyAgents={allAgents.filter(a => 
+                a.revealed && 
+                a.factionId !== Number(id) && 
+                !a.deleted
+              )}
+              isOwner={isOwnerView}
+            />
           )}
-          isOwner={isOwnerView}
-        />
+        </>
       )}
 
       {/* MAILBOX TAB */}
@@ -2683,7 +2658,7 @@ export default function Faction() {
                       <br /><br />
                       Signed,
                       <br />
-                      {factionData?.name || `Faction ${id}`}
+                      {factionData?.name || `Lord of Faction ${id}`}
                     </p>
                   </div>
                 )}
@@ -2840,7 +2815,7 @@ export default function Faction() {
                         <br /><br />
                         {selectedMessage.body}
                         <br /><br />
-                        <span style={{ color: "#a89a7a" }}>— Your humble spymaster</span>
+                        <span style={{ color: "#a89a7a" }}>- Your humble spymaster</span>
                       </p>
                     </div>
                   ) : (

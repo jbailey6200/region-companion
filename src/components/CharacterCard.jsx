@@ -127,14 +127,14 @@ export default function CharacterCard({
                 className="small"
                 style={{ margin: 0, padding: "6px 12px" }}
               >
-                âœ”
+                ✓
               </button>
               <button
                 onClick={handleCancelEdit}
                 className="small"
                 style={{ margin: 0, padding: "6px 12px" }}
               >
-                âœ•
+                ❌
               </button>
             </div>
           ) : (
