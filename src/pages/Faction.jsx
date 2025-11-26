@@ -16,13 +16,21 @@ import {
 import RegionCard from "../components/RegionCard";
 import ArmyCard from "../components/ArmyCard";
 import CharacterCard from "../components/CharacterCard";
+import CharacterForm from "../components/CharacterForm";
 import Court from "../components/Court";
 import AgentMissions from "../components/AgentMissions";
+import { Mailbox } from "../components/MessageSystem";
 import { getAuthState } from "../utils/auth";
 import { BUILDING_RULES } from "../config/buildingRules";
 import { DEITIES } from "../config/religionRules";
 import { TERRAIN_TYPES } from "../config/terrainRules";
 import { getCourtBonuses, getMaxArmyCap, canRaiseAgentWithCourt } from "../config/courtPositions";
+import {
+  calculateEconomy,
+  getModifiedUpkeep,
+  AGENT_UPKEEP,
+  LEVY_UPKEEP_PER_UNIT,
+} from "../utils/economyCalculations";
 
 /* -------------------------------------------------------
    TOAST SYSTEM
@@ -67,226 +75,12 @@ function useToasts() {
 }
 
 /* -------------------------------------------------------
-   CONSTANTS / ECONOMY WITH DEITY BONUSES
+   CONSTANTS
 -------------------------------------------------------- */
-
-const AGENT_UPKEEP = {
-  spy: 1,
-  agitator: 4,
-  enforcer: 2,
-};
-
-function calculateEconomy(regions, patronDeity = null) {
-  let goldTotal = 0;
-  let manpowerProdTotal = 0;
-  let manpowerCostTotal = 0;
-  let hsgCapTotal = 0;
-  let farmEqTotal = 0;
-  let mineEqTotal = 0;
-  let levyInfTotal = 0;
-  let levyArchTotal = 0;
-
-  // Income breakdown tracking
-  let settlementGold = 0;
-  let mineGold = 0;
-  let fortificationCost = 0;
-  let deityGold = 0;
-
-  let townCountTotal = 0;
-  let cityCountTotal = 0;
-  let villageCountTotal = 0;
-
-  let riverRegionCount = 0;
-  let coastalRegionCount = 0;
-  let mountainRegionCount = 0;
-  let hillsRegionCount = 0;
-  let totalMineCount = 0;
-
-  const deity = patronDeity ? DEITIES[patronDeity] : null;
-
-  for (const r of regions) {
-    // Skip regions under siege - they contribute nothing
-    if (r.underSiege) continue;
-
-    const ups = r.upgrades || [];
-    const disabled = r.disabledUpgrades || [];
-    const terrain = r.terrain || TERRAIN_TYPES.PLAINS;
-
-    if (terrain === TERRAIN_TYPES.RIVER) riverRegionCount++;
-    if (terrain === TERRAIN_TYPES.COAST) coastalRegionCount++;
-    if (terrain === TERRAIN_TYPES.MOUNTAINS) mountainRegionCount++;
-    if (terrain === TERRAIN_TYPES.HILLS) hillsRegionCount++;
-
-    const counts = {};
-    ups.forEach((u) => {
-      counts[u] = (counts[u] || 0) + 1;
-    });
-    disabled.forEach((d) => {
-      if (counts[d]) counts[d] -= 1;
-    });
-
-    let regionGold = 0;
-    let regionManProd = 0;
-    let regionManCost = 0;
-    let regionHsgCap = 0;
-    let regionFarmEq = 0;
-    let regionMineEq = 0;
-    let regionLevyInf = 0;
-    let regionLevyArch = 0;
-
-    Object.entries(counts).forEach(([name, count]) => {
-      if (count <= 0) return;
-      const rule = BUILDING_RULES[name];
-      if (!rule) return;
-
-      let gold = rule.gold || 0;
-      let manpower = rule.manpower || 0;
-      let manpowerCost = rule.manpowerCost || 0;
-      let hsgCap = rule.hsgCap || 0;
-      let levyArch = rule.levyArch || 0;
-
-      // Track base gold by source before deity bonuses
-      if (name === "Village" || name === "Town" || name === "City") {
-        settlementGold += (rule.gold || 0) * count;
-      }
-      if (name === "Mine" || name === "Mine2") {
-        mineGold += (rule.gold || 0) * count;
-      }
-      if (name === "Keep" || name === "Castle") {
-        fortificationCost += Math.abs(rule.gold || 0) * count;
-      }
-
-      if (deity) {
-        if (deity.bonuses.townGold && name === "Town") {
-          gold += deity.bonuses.townGold;
-          deityGold += deity.bonuses.townGold * count;
-        }
-        if (deity.bonuses.cityGold && name === "City") {
-          gold += deity.bonuses.cityGold;
-          deityGold += deity.bonuses.cityGold * count;
-        }
-
-        if (deity.bonuses.mineGold && (name === "Mine" || name === "Mine2")) {
-          gold += deity.bonuses.mineGold;
-          deityGold += deity.bonuses.mineGold * count;
-        }
-
-        if (deity.bonuses.settlementManpower &&
-          (name === "Village" || name === "Town" || name === "City"))
-          manpower += deity.bonuses.settlementManpower;
-
-        if (name === "Keep" && deity.bonuses.keepHSG)
-          hsgCap += deity.bonuses.keepHSG;
-
-        if (name === "Castle" && deity.bonuses.castleHSG)
-          hsgCap += deity.bonuses.castleHSG;
-
-        if (deity.bonuses.farmLevyBonus && (name === "Farm" || name === "Farm2"))
-          levyArch += deity.bonuses.farmLevyBonus;
-      }
-
-      regionGold += gold * count;
-      regionManProd += manpower * count;
-      regionManCost += manpowerCost * count;
-      regionHsgCap += hsgCap * count;
-      regionFarmEq += (rule.farmEquivalent || 0) * count;
-      regionMineEq += (rule.mineEquivalent || 0) * count;
-      regionLevyInf += (rule.levyInf || 0) * count;
-      regionLevyArch += levyArch * count;
-
-      if (name === "Town") townCountTotal += count;
-      if (name === "City") cityCountTotal += count;
-      if (name === "Village") villageCountTotal += count;
-      if (name === "Mine" || name === "Mine2") totalMineCount += count;
-    });
-
-    // Terrain bonuses
-    if (deity) {
-      if (terrain === TERRAIN_TYPES.RIVER && deity.bonuses.riverGold) {
-        regionGold += deity.bonuses.riverGold;
-        deityGold += deity.bonuses.riverGold;
-      }
-      if ((terrain === TERRAIN_TYPES.MOUNTAINS || terrain === TERRAIN_TYPES.HILLS) && deity.bonuses.mountainHillsGold) {
-        regionGold += deity.bonuses.mountainHillsGold;
-        deityGold += deity.bonuses.mountainHillsGold;
-      }
-      if (terrain === TERRAIN_TYPES.COAST && deity.bonuses.coastalGold) {
-        regionGold += deity.bonuses.coastalGold;
-        deityGold += deity.bonuses.coastalGold;
-      }
-      if (terrain === TERRAIN_TYPES.MOUNTAINS && deity.bonuses.mountainGold) {
-        regionGold += deity.bonuses.mountainGold;
-        deityGold += deity.bonuses.mountainGold;
-      }
-    }
-
-    goldTotal += regionGold;
-    manpowerProdTotal += regionManProd;
-    manpowerCostTotal += regionManCost;
-    hsgCapTotal += regionHsgCap;
-    farmEqTotal += regionFarmEq;
-    mineEqTotal += regionMineEq;
-    levyInfTotal += regionLevyInf;
-    levyArchTotal += regionLevyArch;
-  }
-
-  return {
-    goldPerTurn: goldTotal,
-    manpowerProduced: manpowerProdTotal,
-    manpowerUpkeep: manpowerCostTotal,
-    manpowerNet: manpowerProdTotal - manpowerCostTotal,
-    hsgCap: hsgCapTotal,
-    farmEquivalent: farmEqTotal,
-    mineEquivalent: mineEqTotal,
-    levyInfantry: levyInfTotal,
-    levyArchers: levyArchTotal,
-    townCount: townCountTotal,
-    cityCount: cityCountTotal,
-    villageCount: villageCountTotal,
-    // Income breakdown
-    incomeBreakdown: {
-      settlements: settlementGold,
-      mines: mineGold,
-      fortifications: fortificationCost,
-      deity: deityGold,
-    },
-    deityBonuses: patronDeity
-      ? {
-          riverRegions: riverRegionCount,
-          coastalRegions: coastalRegionCount,
-          mountainRegions: mountainRegionCount,
-          hillsRegions: hillsRegionCount,
-          mines: totalMineCount,
-        }
-      : null,
-  };
-}
-
-function getModifiedUpkeep(unitType, baseUpkeep, patronDeity) {
-  const deity = patronDeity ? DEITIES[patronDeity] : null;
-  if (!deity) return baseUpkeep;
-
-  switch (unitType) {
-    case "huscarls":
-      return deity.bonuses.huscarlUpkeep ?? baseUpkeep;
-    case "dismountedKnights":
-      return deity.bonuses.dismountedKnightUpkeep ?? baseUpkeep;
-    case "mountedKnights":
-      return deity.bonuses.mountedKnightUpkeep ?? baseUpkeep;
-    case "warships":
-      return deity.bonuses.warshipUpkeep ?? baseUpkeep;
-    case "agitator":
-      return deity.bonuses.agitatorUpkeep ?? baseUpkeep;
-    default:
-      return baseUpkeep;
-  }
-}
-
-const LEVY_UPKEEP_PER_UNIT = 0.25;
 
 const DEFAULT_CRESTS = {
   "1": "/faction1.png",
-  "2": "/holmes.png",       
+  "2": "/holmes.png",
   "3": "/faction3.png",
   "4": "/faction4.png",
   "5": "/faction5.png",
@@ -309,7 +103,7 @@ export default function Faction() {
   const [allRegions, setAllRegions] = useState([]);
   const [eco, setEco] = useState(null);
   const [activeTab, setActiveTab] = useState("regions");
-  const [agentSubTab, setAgentSubTab] = useState("roster"); // "roster" or "missions"
+  const [agentSubTab, setAgentSubTab] = useState("roster");
 
   const [factionData, setFactionData] = useState(null);
   const [armies, setArmies] = useState([]);
@@ -324,8 +118,6 @@ export default function Faction() {
   const [allCharacters, setAllCharacters] = useState([]);
   const [allArmies, setAllArmies] = useState([]);
   const [isAddingCharacter, setIsAddingCharacter] = useState(false);
-  const [newCharFirstName, setNewCharFirstName] = useState("");
-  const [newCharLastName, setNewCharLastName] = useState("");
 
   const [patronDeity, setPatronDeity] = useState(null);
 
@@ -337,18 +129,11 @@ export default function Faction() {
 
   const [factionCrest, setFactionCrest] = useState(null);
 
-  // Court positions state
   const [courtPositions, setCourtPositions] = useState([]);
-
-  // Faction names for Court
   const [allFactionNames, setAllFactionNames] = useState({});
 
   // Mailbox state
   const [messages, setMessages] = useState([]);
-  const [composeOpen, setComposeOpen] = useState(false);
-  const [composeTo, setComposeTo] = useState("gm");
-  const [composeBody, setComposeBody] = useState("");
-  const [selectedMessage, setSelectedMessage] = useState(null);
 
   useEffect(() => {
     const auth = getAuthState();
@@ -369,16 +154,12 @@ export default function Faction() {
   }, [id, navigate]);
 
   const isGM = role === "gm";
-  const isOwnerView =
-    (role === "faction" && myFactionId === Number(id)) || isGM;
-
+  const isOwnerView = (role === "faction" && myFactionId === Number(id)) || isGM;
   const canEditAgents = isOwnerView || isGM;
 
+  // Load faction regions
   useEffect(() => {
-    const q = query(
-      collection(db, "regions"),
-      where("owner", "==", Number(id))
-    );
+    const q = query(collection(db, "regions"), where("owner", "==", Number(id)));
 
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map((doc) => ({
@@ -407,9 +188,9 @@ export default function Faction() {
   // Load court positions
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "court"), (snap) => {
-      const positions = snap.docs.map(doc => ({
+      const positions = snap.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
       }));
       setCourtPositions(positions);
     });
@@ -419,17 +200,13 @@ export default function Faction() {
   // Load mailbox messages for this faction
   useEffect(() => {
     const messagesRef = collection(db, "messages");
-    const q = query(
-      messagesRef,
-      where("toFactionId", "==", Number(id))
-    );
-    
+    const q = query(messagesRef, where("toFactionId", "==", Number(id)));
+
     const unsub = onSnapshot(q, (snap) => {
-      const msgs = snap.docs.map(doc => ({
+      const msgs = snap.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
       }));
-      // Sort by date, newest first
       msgs.sort((a, b) => {
         const dateA = a.createdAt?.toDate?.() || new Date(0);
         const dateB = b.createdAt?.toDate?.() || new Date(0);
@@ -445,16 +222,17 @@ export default function Faction() {
     return getCourtBonuses(courtPositions, Number(id));
   }, [courtPositions, id]);
 
+  // Calculate economy using shared function
   useEffect(() => {
     if (regions.length > 0 || patronDeity) {
       let baseEco = calculateEconomy(regions, patronDeity);
-      // Add court bonuses
       baseEco.goldPerTurn += courtBonuses.gold;
       baseEco.courtBonuses = courtBonuses.positions;
       setEco(baseEco);
     }
   }, [regions, patronDeity, courtBonuses]);
 
+  // Load all regions
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "regions"), (snap) => {
       const list = snap.docs.map((doc) => ({
@@ -467,6 +245,7 @@ export default function Faction() {
     return () => unsub();
   }, []);
 
+  // Load faction data
   useEffect(() => {
     const ref = doc(db, "factions", String(id));
     const unsub = onDocSnapshot(ref, (snap) => {
@@ -489,26 +268,59 @@ export default function Faction() {
         });
         setPatronDeity(data.patronDeity || null);
         setEditedFactionName(data.name || "");
-        setFactionCrest(
-          data.crest || DEFAULT_CRESTS[String(id)] || null
-        );
+        setFactionCrest(data.crest || DEFAULT_CRESTS[String(id)] || null);
       }
     });
 
     return () => unsub();
   }, [id]);
 
+  // Load armies
+  useEffect(() => {
+    const armiesRef = collection(db, "factions", String(id), "armies");
+    const unsub = onSnapshot(armiesRef, (snap) => {
+      const list = snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }));
+      setArmies(list);
+    });
+    return () => unsub();
+  }, [id]);
+
+  // Load all armies across factions
+  useEffect(() => {
+    const unsubscribers = [];
+
+    for (let factionId = 1; factionId <= 8; factionId++) {
+      const unsub = onSnapshot(
+        collection(db, "factions", String(factionId), "armies"),
+        (snap) => {
+          const factionArmies = snap.docs.map((d) => ({
+            id: d.id,
+            factionId: factionId,
+            ...d.data(),
+          }));
+
+          setAllArmies((prev) => {
+            const otherArmies = prev.filter((a) => a.factionId !== factionId);
+            return [...otherArmies, ...factionArmies];
+          });
+        }
+      );
+      unsubscribers.push(unsub);
+    }
+
+    return () => unsubscribers.forEach((unsub) => unsub());
+  }, []);
+
+  // Faction name functions
   async function saveFactionName() {
     if (!isOwnerView) return;
     const ref = doc(db, "factions", String(id));
     await updateDoc(ref, { name: editedFactionName });
     setIsEditingFactionName(false);
-    show(
-      "Faction Renamed",
-      `Faction is now called "${
-        editedFactionName || `Faction ${id}`
-      }"`
-    );
+    show("Faction Renamed", `Faction is now called "${editedFactionName || `Faction ${id}`}"`);
   }
 
   function cancelEditFactionName() {
@@ -527,131 +339,52 @@ export default function Faction() {
     show("Capital Established", `Your capital has been established at [${regionCode}]. This cannot be changed.`);
   }
 
-  // Mailbox functions
-  async function sendMessage() {
-    if (!composeBody.trim()) return;
-    
-    // Character count check for player-to-player messages (250 char max)
-    if (composeTo !== "gm" && composeBody.trim().length > 250) {
-      show("Message Too Long", "Messages to other lords are limited to 250 characters.");
-      return;
-    }
-
+  // Mailbox functions using shared component
+  async function sendMessage({ to, body }) {
     const myFactionName = factionData?.name || `Faction ${id}`;
-    
+
     try {
       await addDoc(collection(db, "messages"), {
         fromFactionId: Number(id),
         fromFactionName: myFactionName,
-        toFactionId: composeTo === "gm" ? 0 : Number(composeTo),
-        toType: composeTo === "gm" ? "gm" : "faction",
-        body: composeBody.trim(),
+        toFactionId: to === "gm" ? 0 : Number(to),
+        toType: to === "gm" ? "gm" : "faction",
+        body: body,
         createdAt: new Date(),
         read: false,
-        type: "player",
+        type: "message",
       });
-      
-      setComposeBody("");
-      setComposeOpen(false);
-      show("Message Sent", composeTo === "gm" ? "Your message has been sent to the Game Master." : "Your raven has been dispatched.");
+      show("Message Sent", "Your raven has taken flight.");
     } catch (error) {
       console.error("Error sending message:", error);
     }
   }
 
-  async function deleteMessage(messageId) {
-    try {
-      await deleteDoc(doc(db, "messages", messageId));
-      setSelectedMessage(null);
-    } catch (error) {
-      console.error("Error deleting message:", error);
-    }
-  }
-
   async function markMessageRead(messageId) {
-    try {
-      await updateDoc(doc(db, "messages", messageId), { read: true });
-    } catch (error) {
-      console.error("Error marking message read:", error);
-    }
+    await updateDoc(doc(db, "messages", messageId), { read: true });
   }
 
-  const unreadCount = messages.filter(m => !m.read).length;
+  async function deleteMessage(messageId) {
+    await deleteDoc(doc(db, "messages", messageId));
+  }
 
-  useEffect(() => {
-    const armiesRef = collection(
-      db,
-      "factions",
-      String(id),
-      "armies"
-    );
-    const unsub = onSnapshot(armiesRef, (snap) => {
-      const list = snap.docs.map((d) => ({
-        id: d.id,
-        name: "",
-        location: "",
-        huscarls: 0,
-        dismountedKnights: 0,
-        mountedKnights: 0,
-        lightHorse: 0,
-        levyInfantry: 0,
-        levyArchers: 0,
-        commanders: [],
-        deleted: false,
-        ...d.data(),
-      }));
-      const validArmies = list.filter(army => {
-        if (!Array.isArray(army.commanders)) {
-          army.commanders = [];
-        }
-        return true;
-      });
-      setArmies(validArmies);
+  const unreadCount = messages.filter((m) => !m.read).length;
+
+  // Build recipient list for mailbox
+  const messageRecipients = useMemo(() => {
+    const recipients = { gm: "Game Master" };
+    Object.entries(allFactionNames).forEach(([fId, name]) => {
+      if (fId !== String(id) && fId !== "neutral") {
+        recipients[fId] = name;
+      }
     });
-    return () => unsub();
-  }, [id]);
+    return recipients;
+  }, [allFactionNames, id]);
 
-  // Load ALL armies across all factions (for mission targeting)
-  useEffect(() => {
-    const unsubscribers = [];
-    
-    for (let factionId = 1; factionId <= 8; factionId++) {
-      const unsub = onSnapshot(
-        collection(db, "factions", String(factionId), "armies"),
-        (snap) => {
-          const factionArmies = snap.docs.map(d => ({
-            id: d.id,
-            factionId: factionId,
-            ...d.data(),
-          }));
-          
-          setAllArmies(prev => {
-            const otherArmies = prev.filter(a => a.factionId !== factionId);
-            return [...otherArmies, ...factionArmies];
-          });
-        }
-      );
-      unsubscribers.push(unsub);
-    }
-    
-    return () => unsubscribers.forEach(unsub => unsub());
-  }, []);
-
-  async function addArmy() {
+  // Army functions
+  async function createArmy() {
     if (!isOwnerView) return;
-    
-    const maxArmies = getMaxArmyCap(3, courtBonuses);
-    if (armies.filter(a => !a.deleted).length >= maxArmies) {
-      show("Army Cap Reached", `You can maintain a maximum of ${maxArmies} armies${maxArmies > 3 ? ' (including Lord Marshal bonus)' : ''}.`);
-      return;
-    }
-    
-    const armiesRef = collection(
-      db,
-      "factions",
-      String(id),
-      "armies"
-    );
+    const armiesRef = collection(db, "factions", String(id), "armies");
     const defaultName = `Army ${armies.length + 1}`;
     await addDoc(armiesRef, {
       name: defaultName,
@@ -668,25 +401,13 @@ export default function Faction() {
 
   async function deleteArmy(armyId) {
     if (!isOwnerView) return;
-    const ref = doc(
-      db,
-      "factions",
-      String(id),
-      "armies",
-      armyId
-    );
+    const ref = doc(db, "factions", String(id), "armies", armyId);
     await updateDoc(ref, { deleted: true });
   }
 
   async function changeArmyField(armyId, field, value) {
     if (!isOwnerView) return;
-    const ref = doc(
-      db,
-      "factions",
-      String(id),
-      "armies",
-      armyId
-    );
+    const ref = doc(db, "factions", String(id), "armies", armyId);
     await updateDoc(ref, { [field]: value });
   }
 
@@ -695,28 +416,17 @@ export default function Faction() {
     const army = armies.find((a) => a.id === armyId);
     const current = army[field] || 0;
     const next = Math.max(0, current + delta);
-    const ref = doc(
-      db,
-      "factions",
-      String(id),
-      "armies",
-      armyId
-    );
+    const ref = doc(db, "factions", String(id), "armies", armyId);
     await updateDoc(ref, { [field]: next });
   }
 
   const totalLevyInfantryUnits = useMemo(
-    () =>
-      armies.reduce(
-        (sum, a) => sum + (a.levyInfantry || 0),
-        0
-      ),
+    () => armies.reduce((sum, a) => sum + (a.levyInfantry || 0), 0),
     [armies]
   );
 
   const totalLevyArcherUnits = useMemo(
-    () =>
-      armies.reduce((sum, a) => sum + (a.levyArchers || 0), 0),
+    () => armies.reduce((sum, a) => sum + (a.levyArchers || 0), 0),
     [armies]
   );
 
@@ -727,13 +437,8 @@ export default function Faction() {
     const current = army[field] || 0;
     const next = Math.max(0, current + delta);
 
-    const newTotalInf =
-      totalLevyInfantryUnits +
-      (field === "levyInfantry" ? next - current : 0);
-
-    const newTotalArch =
-      totalLevyArcherUnits +
-      (field === "levyArchers" ? next - current : 0);
+    const newTotalInf = totalLevyInfantryUnits + (field === "levyInfantry" ? next - current : 0);
+    const newTotalArch = totalLevyArcherUnits + (field === "levyArchers" ? next - current : 0);
 
     const levyInfPotential = eco?.levyInfantry || 0;
     const levyArchPotential = eco?.levyArchers || 0;
@@ -742,59 +447,32 @@ export default function Faction() {
     const levyArchUnits = Math.floor(levyArchPotential / 10);
 
     if (field === "levyInfantry" && newTotalInf > levyInfUnits) {
-      window.alert(
-        `Cannot raise more levy infantry.\n\nCurrent: ${totalLevyInfantryUnits} / ${levyInfUnits}`
-      );
+      window.alert(`Cannot raise more levy infantry.\n\nCurrent: ${totalLevyInfantryUnits} / ${levyInfUnits}`);
       return;
     }
 
     if (field === "levyArchers" && newTotalArch > levyArchUnits) {
-      window.alert(
-        `Cannot raise more levy archers.\n\nCurrent: ${totalLevyArcherUnits} / ${levyArchUnits}`
-      );
+      window.alert(`Cannot raise more levy archers.\n\nCurrent: ${totalLevyArcherUnits} / ${levyArchUnits}`);
       return;
     }
 
-    const ref = doc(
-      db,
-      "factions",
-      String(id),
-      "armies",
-      armyId
-    );
+    const ref = doc(db, "factions", String(id), "armies", armyId);
     await updateDoc(ref, { [field]: next });
   }
 
   async function updateArmyCommanders(armyId, commanderIds) {
     if (!isOwnerView) return;
-    
-    // Find the army to get current commanders
-    const army = armies.find(a => a.id === armyId);
+
+    const army = armies.find((a) => a.id === armyId);
     const oldCommanders = army?.commanders || [];
-    
-    // Find commanders that were removed
-    const removedCommanders = oldCommanders.filter(cmdId => !commanderIds.includes(cmdId));
-    
-    // Update the army
-    const armyRef = doc(
-      db,
-      "factions",
-      String(id),
-      "armies",
-      armyId
-    );
+    const removedCommanders = oldCommanders.filter((cmdId) => !commanderIds.includes(cmdId));
+
+    const armyRef = doc(db, "factions", String(id), "armies", armyId);
     await updateDoc(armyRef, { commanders: commanderIds });
-    
-    // Update location of removed commanders to capital
+
     const capital = factionData?.capital;
     for (const cmdId of removedCommanders) {
-      const charRef = doc(
-        db,
-        "factions",
-        String(id),
-        "characters",
-        cmdId
-      );
+      const charRef = doc(db, "factions", String(id), "characters", cmdId);
       await updateDoc(charRef, { location: capital || null });
     }
   }
@@ -807,12 +485,10 @@ export default function Faction() {
     await updateDoc(ref, { "navy.warships": next });
   }
 
+  // Agent functions
   useEffect(() => {
     const agentsRef = collection(db, "agents");
-    const qAgents = query(
-      agentsRef,
-      where("factionId", "==", Number(id))
-    );
+    const qAgents = query(agentsRef, where("factionId", "==", Number(id)));
     const unsub = onSnapshot(qAgents, (snap) => {
       const list = snap.docs.map((d) => ({
         id: d.id,
@@ -823,10 +499,9 @@ export default function Faction() {
     return () => unsub();
   }, [id]);
 
-  // Load ALL agents (for revealed enemy agents in missions)
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "agents"), (snap) => {
-      const list = snap.docs.map(d => ({
+      const list = snap.docs.map((d) => ({
         id: d.id,
         ...d.data(),
       }));
@@ -837,188 +512,33 @@ export default function Faction() {
 
   const townCount = eco?.townCount || 0;
   const cityCount = eco?.cityCount || 0;
-
   const maxAgents = townCount * 1 + cityCount * 2;
-  const activeAgents = agents.filter(a => !a.deleted);
+  const activeAgents = agents.filter((a) => !a.deleted);
   const agentsCount = activeAgents.length;
 
   const totalAgentUpkeep = activeAgents.reduce((sum, a) => {
     const baseUpkeep = AGENT_UPKEEP[a.type] || 0;
-    return (
-      sum +
-      getModifiedUpkeep(a.type, baseUpkeep, patronDeity)
-    );
+    return sum + getModifiedUpkeep(a.type, baseUpkeep, patronDeity);
   }, 0);
-
-  useEffect(() => {
-    const charactersRef = collection(
-      db,
-      "factions",
-      String(id),
-      "characters"
-    );
-    const unsub = onSnapshot(charactersRef, (snap) => {
-      const list = snap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      }));
-      setCharacters(list);
-    });
-    return () => unsub();
-  }, [id]);
-
-  // Load ALL characters across all factions (for mission targeting)
-  useEffect(() => {
-    const unsubscribers = [];
-    
-    for (let factionId = 1; factionId <= 8; factionId++) {
-      const unsub = onSnapshot(
-        collection(db, "factions", String(factionId), "characters"),
-        (snap) => {
-          const factionChars = snap.docs.map(d => ({
-            id: d.id,
-            factionId: factionId,
-            ...d.data(),
-          }));
-          
-          setAllCharacters(prev => {
-            const otherChars = prev.filter(c => c.factionId !== factionId);
-            return [...otherChars, ...factionChars];
-          });
-        }
-      );
-      unsubscribers.push(unsub);
-    }
-    
-    return () => unsubscribers.forEach(unsub => unsub());
-  }, []);
-
-  function generateRandomStats() {
-    return {
-      leadership: Math.floor(Math.random() * 10) + 1,
-      prowess: Math.floor(Math.random() * 10) + 1,
-      stewardship: Math.floor(Math.random() * 10) + 1,
-      intrigue: Math.floor(Math.random() * 10) + 1,
-    };
-  }
-
-  async function handleAddCharacter(e) {
-    e.preventDefault();
-    if (!isOwnerView) return;
-
-    if (!newCharFirstName.trim() && !newCharLastName.trim()) {
-      show(
-        "Name Required",
-        "Please enter at least a first or last name."
-      );
-      return;
-    }
-
-    const stats = generateRandomStats();
-
-    const charactersRef = collection(
-      db,
-      "factions",
-      String(id),
-      "characters"
-    );
-
-    await addDoc(charactersRef, {
-      firstName: newCharFirstName.trim() || "Unnamed",
-      lastName: newCharLastName.trim() || "",
-      ...stats,
-      courtPosition: "",
-      location: factionData?.capital || null,
-      createdAt: new Date(),
-    });
-
-    show(
-      "Character Added",
-      `${newCharFirstName} ${newCharLastName} has joined your house!`
-    );
-
-    setNewCharFirstName("");
-    setNewCharLastName("");
-    setIsAddingCharacter(false);
-  }
-
-  async function updateCharacterField(charId, field, value) {
-    if (!isOwnerView && !isGM) return;
-    const ref = doc(
-      db,
-      "factions",
-      String(id),
-      "characters",
-      charId
-    );
-    await updateDoc(ref, { [field]: value });
-  }
-
-  async function deleteCharacter(charId) {
-    if (!isOwnerView && !isGM) return;
-    if (
-      !window.confirm("Remove this character from your house?")
-    )
-      return;
-    const ref = doc(
-      db,
-      "factions",
-      String(id),
-      "characters",
-      charId
-    );
-    await deleteDoc(ref);
-    show(
-      "Character Removed",
-      "The character has been removed from your house."
-    );
-  }
-
-  async function changePatronDeity(deityKey) {
-    if (!isOwnerView) return;
-    const ref = doc(db, "factions", String(id));
-    await updateDoc(ref, {
-      patronDeity: deityKey || null,
-    });
-    setPatronDeity(deityKey || null);
-    show(
-      "Patron Deity Changed",
-      deityKey
-        ? `Now following ${DEITIES[deityKey].name}`
-        : "No patron deity selected"
-    );
-  }
-
-  const deity = patronDeity ? DEITIES[patronDeity] : null;
 
   async function handleHireAgent(e) {
     e.preventDefault();
     if (!canEditAgents) return;
 
+    const deity = patronDeity ? DEITIES[patronDeity] : null;
     const canHire = canRaiseAgentWithCourt(agentsCount, maxAgents, courtBonuses);
-    
+
     if (!canHire) {
-      show(
-        "Agent Cap Reached",
-        `You've met your agent cap (${agentsCount}/${maxAgents})!`
-      );
+      show("Agent Cap Reached", `You've met your agent cap (${agentsCount}/${maxAgents})!`);
       return;
     }
 
     const type = newAgentType;
     const name =
       newAgentName.trim() ||
-      (type === "spy"
-        ? "Unnamed Spy"
-        : type === "agitator"
-        ? "Unnamed Agitator"
-        : "Unnamed Enforcer");
+      (type === "spy" ? "Unnamed Spy" : type === "agitator" ? "Unnamed Agitator" : "Unnamed Enforcer");
 
-    const startingLevel =
-      deity?.bonuses.agentStartLevel &&
-      patronDeity === "comnea"
-        ? 2
-        : 1;
+    const startingLevel = deity?.bonuses.agentStartLevel && patronDeity === "comnea" ? 2 : 1;
 
     const agentsRef = collection(db, "agents");
     await addDoc(agentsRef, {
@@ -1029,12 +549,7 @@ export default function Faction() {
       location: newAgentLocation || "",
     });
 
-    show(
-      "Agent Hired",
-      `${name} (${type}) hired${
-        startingLevel > 1 ? " at level 2" : ""
-      }.`
-    );
+    show("Agent Hired", `${name} (${type}) hired${startingLevel > 1 ? " at level 2" : ""}.`);
 
     setNewAgentName("");
     setNewAgentLocation("");
@@ -1053,6 +568,74 @@ export default function Faction() {
     show("Agent Dismissed", "The agent has been removed.");
   }
 
+  // Character functions
+  useEffect(() => {
+    const charactersRef = collection(db, "factions", String(id), "characters");
+    const unsub = onSnapshot(charactersRef, (snap) => {
+      const list = snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }));
+      setCharacters(list);
+    });
+    return () => unsub();
+  }, [id]);
+
+  useEffect(() => {
+    const unsubscribers = [];
+
+    for (let factionId = 1; factionId <= 8; factionId++) {
+      const unsub = onSnapshot(collection(db, "factions", String(factionId), "characters"), (snap) => {
+        const factionChars = snap.docs.map((d) => ({
+          id: d.id,
+          factionId: factionId,
+          ...d.data(),
+        }));
+
+        setAllCharacters((prev) => {
+          const otherChars = prev.filter((c) => c.factionId !== factionId);
+          return [...otherChars, ...factionChars];
+        });
+      });
+      unsubscribers.push(unsub);
+    }
+
+    return () => unsubscribers.forEach((unsub) => unsub());
+  }, []);
+
+  async function handleAddCharacter(charData) {
+    if (!isOwnerView) return;
+
+    const charactersRef = collection(db, "factions", String(id), "characters");
+    await addDoc(charactersRef, charData);
+
+    show("Character Created", `${charData.firstName} ${charData.lastName} has joined your house.`);
+    setIsAddingCharacter(false);
+  }
+
+  async function updateCharacterField(charId, field, value) {
+    const ref = doc(db, "factions", String(id), "characters", charId);
+    await updateDoc(ref, { [field]: value });
+  }
+
+  async function deleteCharacter(charId) {
+    if (!window.confirm("Remove this character?")) return;
+    await deleteDoc(doc(db, "factions", String(id), "characters", charId));
+  }
+
+  // Religion functions
+  async function changePatronDeity(deityKey) {
+    if (!isOwnerView) return;
+    const ref = doc(db, "factions", String(id));
+    await updateDoc(ref, { patronDeity: deityKey });
+
+    if (deityKey) {
+      show("Patron Deity Changed", `${DEITIES[deityKey].name} now watches over your realm.`);
+    } else {
+      show("Patron Deity Removed", "Your realm no longer follows a patron deity.");
+    }
+  }
+
   // Army cap from court
   const maxArmyCap = getMaxArmyCap(3, courtBonuses);
 
@@ -1060,13 +643,7 @@ export default function Faction() {
   const hsgUsed = useMemo(() => {
     return armies.reduce((sum, a) => {
       if (a.deleted) return sum;
-      return (
-        sum +
-        (a.huscarls || 0) +
-        (a.dismountedKnights || 0) +
-        (a.mountedKnights || 0) +
-        (a.lightHorse || 0)
-      );
+      return sum + (a.huscarls || 0) + (a.dismountedKnights || 0) + (a.mountedKnights || 0) + (a.lightHorse || 0);
     }, 0);
   }, [armies]);
 
@@ -1075,6 +652,7 @@ export default function Faction() {
 
   // Gold calculations
   const warships = factionData?.navy?.warships || 0;
+  const deity = patronDeity ? DEITIES[patronDeity] : null;
 
   const hsgGoldUpkeep = useMemo(() => {
     return armies.reduce((sum, a) => {
@@ -1095,12 +673,7 @@ export default function Faction() {
 
   const navyGoldUpkeep = warships * getModifiedUpkeep("warships", 3, patronDeity);
 
-  const netGoldPerTurn =
-    (eco?.goldPerTurn || 0) -
-    hsgGoldUpkeep -
-    levyGoldUpkeep -
-    navyGoldUpkeep -
-    totalAgentUpkeep;
+  const netGoldPerTurn = (eco?.goldPerTurn || 0) - hsgGoldUpkeep - levyGoldUpkeep - navyGoldUpkeep - totalAgentUpkeep;
 
   const goldNegative = netGoldPerTurn < 0;
 
@@ -1143,9 +716,7 @@ export default function Faction() {
                 <input
                   type="text"
                   value={agent.name}
-                  onChange={(e) =>
-                    updateAgentField(agent.id, "name", e.target.value)
-                  }
+                  onChange={(e) => updateAgentField(agent.id, "name", e.target.value)}
                   style={{
                     fontWeight: "bold",
                     fontSize: 15,
@@ -1164,12 +735,7 @@ export default function Faction() {
               <span
                 style={{
                   fontSize: 12,
-                  color:
-                    agent.type === "spy"
-                      ? "#9d7dd1"
-                      : agent.type === "agitator"
-                      ? "#d17d7d"
-                      : "#7dd1a3",
+                  color: agent.type === "spy" ? "#9d7dd1" : agent.type === "agitator" ? "#d17d7d" : "#7dd1a3",
                   textTransform: "capitalize",
                   padding: "2px 8px",
                   background: "#1a1410",
@@ -1208,7 +774,7 @@ export default function Faction() {
                       }}
                       title="Hide agent (remove revealed status)"
                     >
-                      
+                      ✓
                     </button>
                   )}
                 </span>
@@ -1228,13 +794,7 @@ export default function Faction() {
                 {canEditAgents ? (
                   <select
                     value={agent.level || 1}
-                    onChange={(e) =>
-                      updateAgentField(
-                        agent.id,
-                        "level",
-                        Number(e.target.value)
-                      )
-                    }
+                    onChange={(e) => updateAgentField(agent.id, "level", Number(e.target.value))}
                     style={{
                       padding: "2px 6px",
                       background: "#241b15",
@@ -1259,9 +819,7 @@ export default function Faction() {
                 {canEditAgents ? (
                   <select
                     value={agent.location || ""}
-                    onChange={(e) =>
-                      updateAgentField(agent.id, "location", e.target.value)
-                    }
+                    onChange={(e) => updateAgentField(agent.id, "location", e.target.value)}
                     style={{
                       padding: "2px 6px",
                       background: "#241b15",
@@ -1274,9 +832,7 @@ export default function Faction() {
                   >
                     <option value="">Unknown</option>
                     {allRegions
-                      .sort((a, b) =>
-                        (a.code || "").localeCompare(b.code || "")
-                      )
+                      .sort((a, b) => (a.code || "").localeCompare(b.code || ""))
                       .map((r) => (
                         <option key={r.id} value={r.code || r.id}>
                           [{r.code}] {r.name}
@@ -1315,581 +871,113 @@ export default function Faction() {
             color: "#a89a7a",
           }}
         >
-          <span>
-            Upkeep:{" "}
-            {modifiedUpkeep !== baseUpkeep ? (
-              <>
-                <span
-                  style={{
-                    textDecoration: "line-through",
-                    opacity: 0.5,
-                  }}
-                >
-                  {baseUpkeep}
-                </span>{" "}
-                <span
-                  style={{
-                    color: "#b5e8a1",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {modifiedUpkeep}
-                </span>
-              </>
-            ) : (
-              baseUpkeep
-            )}
-            g/turn
-            {agent.type === "agitator" &&
-              patronDeity === "comnea" && (
-                <span
-                  style={{
-                    color: "#b5e8a1",
-                    fontSize: 11,
-                  }}
-                >
-                  {" "}
-                  (Comnea)
-                </span>
-              )}
-          </span>
+          Upkeep: {modifiedUpkeep}g/turn
+          {modifiedUpkeep !== baseUpkeep && <span style={{ color: "#b5e8a1" }}> (deity bonus)</span>}
         </div>
       </div>
     );
   }
 
-  function renderAgentsTab() {
-    const hasSpymaster = courtBonuses.positions.some(
-      p => p.position === 'Lord Spymaster'
-    );
-    const effectiveAgentCap = hasSpymaster ? `${maxAgents} + 1 free agent` : maxAgents;
-
-    return (
-      <>
-        <div className="summary-row">
-          <div className="summary-card">
-            <h3>Agents & Cap</h3>
-            <p>
-              Agents:{" "}
-              <strong>
-                {agentsCount} / {effectiveAgentCap}
-              </strong>
-            </p>
-            <p>
-              From settlements: Towns:{" "}
-              <strong>{townCount}</strong>, Cities:{" "}
-              <strong>{cityCount}</strong>
-            </p>
-            {hasSpymaster && (
-              <p style={{ fontSize: 12, color: "#b5e8a1" }}>
-                Lord Spymaster grants +1 free agent
-              </p>
-            )}
-            <p
-              style={{
-                fontSize: 12,
-                color: "#c7bca5",
-              }}
-            >
-              Cap = 1 per Town, 2 per City. Villages do
-              not support agents.
-            </p>
-          </div>
-
-          <div className="summary-card">
-            <h3>Agent Upkeep (Gold)</h3>
-            <p>
-              Total agent upkeep:{" "}
-              <strong>{totalAgentUpkeep}</strong>{" "}
-              gold/turn
-              {patronDeity === "comnea" &&
-                agents.some(
-                  (a) => a.type === "agitator"
-                ) && (
-                  <span
-                    style={{
-                      color: "#b5e8a1",
-                      fontSize: 11,
-                    }}
-                  >
-                    {" "}
-                    (Comnea bonus applied)
-                  </span>
-                )}
-            </p>
-            <p
-              style={{
-                fontSize: 12,
-                color: "#c7bca5",
-              }}
-            >
-              Spy: 1g, Agitator:{" "}
-              {getModifiedUpkeep(
-                "agitator",
-                4,
-                patronDeity
-              )}
-              g, Enforcer: 2g per turn.
-            </p>
-            {patronDeity === "comnea" && (
-              <p
-                style={{
-                  fontSize: 12,
-                  color: "#b5e8a1",
-                }}
-              >
-                New agents start at level 2
-              </p>
-            )}
-          </div>
-        </div>
-
-        {canEditAgents && (
-          <div
-            className="card"
-            style={{
-              marginTop: 8,
-              marginBottom: 16,
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>
-              Hire New Agent
-            </h3>
-            <p
-              style={{
-                fontSize: 12,
-                color: "#c7bca5",
-                marginTop: 0,
-                marginBottom: 12,
-              }}
-            >
-              Agents are managed at the table. GM and
-              players can adjust levels and locations.
-              Upkeep: Spy 1g, Agitator{" "}
-              {getModifiedUpkeep(
-                "agitator",
-                4,
-                patronDeity
-              )}
-              g, Enforcer 2g per turn.
-              {patronDeity === "comnea" && (
-                <span
-                  style={{
-                    color: "#b5e8a1",
-                  }}
-                >
-                  {" "}
-                  New agents start at level 2!
-                </span>
-              )}
-            </p>
-            <form
-              onSubmit={handleHireAgent}
-              className="agent-hire-form"
-              style={{ gridTemplateColumns: "auto minmax(180px, 1fr) minmax(180px, 1fr) auto" }}
-            >
-              <label
-                style={{
-                  fontSize: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <span>Type:</span>
-                <select
-                  value={newAgentType}
-                  onChange={(e) =>
-                    setNewAgentType(e.target.value)
-                  }
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 6,
-                    border: "1px solid #5e4934",
-                    background: "#241b15",
-                    color: "#f4efe4",
-                    fontFamily: "Georgia, serif",
-                    fontSize: 14,
-                  }}
-                >
-                  <option value="spy">Spy (1g)</option>
-                  <option value="agitator">
-                    Agitator (
-                    {getModifiedUpkeep(
-                      "agitator",
-                      4,
-                      patronDeity
-                    )}
-                    g)
-                  </option>
-                  <option value="enforcer">
-                    Enforcer (2g)
-                  </option>
-                </select>
-              </label>
-
-              <input
-                type="text"
-                placeholder="Agent name (optional)"
-                value={newAgentName}
-                onChange={(e) =>
-                  setNewAgentName(e.target.value)
-                }
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid #5e4934",
-                  background: "#1d1610",
-                  color: "#f3eadc",
-                  fontFamily: "Georgia, serif",
-                  fontSize: 14,
-                }}
-              />
-
-              <select
-                value={newAgentLocation}
-                onChange={(e) =>
-                  setNewAgentLocation(e.target.value)
-                }
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 6,
-                  border: "1px solid #5e4934",
-                  background: "#241b15",
-                  color: "#f4efe4",
-                  fontFamily: "Georgia, serif",
-                  fontSize: 14,
-                }}
-              >
-                <option value="">
-                  Starting location (optional)
-                </option>
-                {allRegions
-                  .sort((a, b) =>
-                    (a.code || "").localeCompare(
-                      b.code || ""
-                    )
-                  )
-                  .map((r) => (
-                    <option
-                      key={r.id}
-                      value={r.code || r.id}
-                    >
-                      [{r.code}] {r.name}
-                    </option>
-                  ))}
-              </select>
-
-              <button type="submit" className="green">
-                Hire Agent
-              </button>
-            </form>
-          </div>
-        )}
-
-        {agents.length === 0 && (
-          <p style={{ color: "#c7bca5" }}>
-            No agents yet. Hire agents to gather
-            intelligence and destabilize rivals.
-          </p>
-        )}
-
-        {agents.filter(a => !a.deleted).map(renderAgentCard)}
-      </>
-    );
-  }
-
+  // Render characters tab
   function renderCharactersTab() {
     return (
       <>
         {isOwnerView && (
           <>
             {!isAddingCharacter ? (
-              <button
-                onClick={() => setIsAddingCharacter(true)}
-                className="green"
-                style={{ marginBottom: 16 }}
-              >
+              <button onClick={() => setIsAddingCharacter(true)} className="green" style={{ marginBottom: 16 }}>
                 + Add Character
               </button>
             ) : (
-              <div
-                className="card"
-                style={{
-                  marginBottom: 16,
-                  padding: 16,
-                }}
-              >
-                <h3 style={{ marginTop: 0 }}>
-                  New House Member
-                </h3>
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: "#c7bca5",
-                    marginTop: 0,
-                  }}
-                >
-                  Stats will be randomly generated (1-10
-                  each).
-                </p>
-                <form
-                  onSubmit={handleAddCharacter}
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
-                  <input
-                    type="text"
-                    placeholder="First name"
-                    value={newCharFirstName}
-                    onChange={(e) =>
-                      setNewCharFirstName(e.target.value)
-                    }
-                    style={{
-                      flex: "1 1 120px",
-                      padding: "8px 12px",
-                      borderRadius: 6,
-                      border: "1px solid #5e4934",
-                      background: "#1d1610",
-                      color: "#f3eadc",
-                      fontFamily: "Georgia, serif",
-                      fontSize: 16,
-                    }}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Last name"
-                    value={newCharLastName}
-                    onChange={(e) =>
-                      setNewCharLastName(e.target.value)
-                    }
-                    style={{
-                      flex: "1 1 120px",
-                      padding: "8px 12px",
-                      borderRadius: 6,
-                      border: "1px solid #5e4934",
-                      background: "#1d1610",
-                      color: "#f3eadc",
-                      fontFamily: "Georgia, serif",
-                      fontSize: 16,
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    style={{ margin: 0 }}
-                  >
-                    Create Character
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddingCharacter(false);
-                      setNewCharFirstName("");
-                      setNewCharLastName("");
-                    }}
-                    style={{ margin: 0 }}
-                  >
-                    Cancel
-                  </button>
-                </form>
-              </div>
+              <CharacterForm
+                onSubmit={handleAddCharacter}
+                onCancel={() => setIsAddingCharacter(false)}
+                randomStats={true}
+                showStats={false}
+                title="New House Member"
+              />
             )}
           </>
         )}
 
-        {characters.length === 0 && (
-          <p style={{ color: "#c7bca5" }}>
-            No house members yet. Add characters to
-            build your noble house.
-          </p>
-        )}
+        {characters.length === 0 && <p style={{ color: "#c7bca5" }}>No characters yet. Create your first!</p>}
 
-        {characters
-          .sort((a, b) => {
-            const aDate = a.createdAt?.seconds || 0;
-            const bDate = b.createdAt?.seconds || 0;
-            return bDate - aDate;
-          })
-          .map((character) => (
-            <CharacterCard
-              key={character.id}
-              character={character}
-              isOwner={isOwnerView}
-              isGM={isGM}
-              patronDeity={patronDeity}
-              courtBonuses={courtBonuses}
-              armies={armies}
-              onUpdateField={updateCharacterField}
-              onDelete={deleteCharacter}
-            />
-          ))}
+        {characters.map((char) => (
+          <CharacterCard
+            key={char.id}
+            character={char}
+            isOwner={isOwnerView}
+            isGM={isGM}
+            patronDeity={patronDeity}
+            courtBonuses={courtBonuses}
+            armies={armies}
+            onUpdateField={updateCharacterField}
+            onDelete={deleteCharacter}
+          />
+        ))}
       </>
     );
   }
 
+  // Render religion tab
   function renderReligionTab() {
-    const currentDeity = patronDeity
-      ? DEITIES[patronDeity]
-      : null;
+    const currentDeity = patronDeity ? DEITIES[patronDeity] : null;
 
     return (
       <>
         <div className="summary-row">
           <div className="summary-card">
-            <h3>Patron Deity</h3>
+            <h3>Current Patron</h3>
             <p>
-              Current:{" "}
-              <strong>
-                {currentDeity
-                  ? currentDeity.name
-                  : "None"}
-              </strong>
+              <strong style={{ fontSize: 18 }}>{currentDeity?.name || "None"}</strong>
             </p>
             {currentDeity && (
-              <p
-                style={{
-                  fontSize: 12,
-                  color: "#c7bca5",
-                }}
-              >
-                {currentDeity.title}
-              </p>
+              <p style={{ fontSize: 12, color: "#c7bca5" }}>{currentDeity.title}</p>
             )}
           </div>
 
-          {deity &&
-            eco?.deityBonuses && (
-              <div className="summary-card">
-                <h3>Active Regional Bonuses</h3>
-                {deity.bonuses.riverGold &&
-                  eco.deityBonuses
-                    .riverRegions > 0 && (
-                    <p
-                      style={{
-                        fontSize: 12,
-                        color: "#b5e8a1",
-                      }}
-                    >
-                      +
-                      {
-                        eco.deityBonuses
-                          .riverRegions
-                      }{" "}
-                      gold from{" "}
-                      {
-                        eco.deityBonuses
-                          .riverRegions
-                      }{" "}
-                      river region(s)
-                    </p>
-                  )}
-                {deity.bonuses.coastalGold &&
-                  eco.deityBonuses
-                    .coastalRegions > 0 && (
-                    <p
-                      style={{
-                        fontSize: 12,
-                        color: "#b5e8a1",
-                      }}
-                    >
-                      +
-                      {eco.deityBonuses.coastalRegions *
-                        2}{" "}
-                      gold from{" "}
-                      {
-                        eco.deityBonuses
-                          .coastalRegions
-                      }{" "}
-                      coastal region(s)
-                    </p>
-                  )}
-                {deity.bonuses.mountainGold &&
-                  eco.deityBonuses
-                    .mountainRegions > 0 && (
-                    <p
-                      style={{
-                        fontSize: 12,
-                        color: "#b5e8a1",
-                      }}
-                    >
-                      +
-                      {eco.deityBonuses.mountainRegions *
-                        3}{" "}
-                      gold from{" "}
-                      {
-                        eco.deityBonuses
-                          .mountainRegions
-                      }{" "}
-                      mountain region(s)
-                    </p>
-                  )}
-                {deity.bonuses
-                  .mountainHillsGold &&
-                  (eco.deityBonuses
-                    .mountainRegions +
-                    eco.deityBonuses
-                      .hillsRegions >
-                    0) && (
-                    <p
-                      style={{
-                        fontSize: 12,
-                        color: "#b5e8a1",
-                      }}
-                    >
-                      +
-                      {eco.deityBonuses
-                        .mountainRegions +
-                        eco.deityBonuses
-                          .hillsRegions}{" "}
-                      gold from mountains/hills
-                    </p>
-                  )}
-                {deity.bonuses.mineGold &&
-                  eco.deityBonuses.mines > 0 && (
-                    <p
-                      style={{
-                        fontSize: 12,
-                        color: "#b5e8a1",
-                      }}
-                    >
-                      +
-                      {eco.deityBonuses.mines} gold
-                      from{" "}
-                      {eco.deityBonuses.mines}{" "}
-                      mine(s)
-                    </p>
-                  )}
-              </div>
-            )}
+          {deity && eco?.deityBonuses && (
+            <div className="summary-card">
+              <h3>Active Regional Bonuses</h3>
+              {deity.bonuses.riverGold && eco.deityBonuses.riverRegions > 0 && (
+                <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                  +{eco.deityBonuses.riverRegions} gold from {eco.deityBonuses.riverRegions} river region(s)
+                </p>
+              )}
+              {deity.bonuses.coastalGold && eco.deityBonuses.coastalRegions > 0 && (
+                <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                  +{eco.deityBonuses.coastalRegions * 2} gold from {eco.deityBonuses.coastalRegions} coastal region(s)
+                </p>
+              )}
+              {deity.bonuses.mountainGold && eco.deityBonuses.mountainRegions > 0 && (
+                <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                  +{eco.deityBonuses.mountainRegions * 3} gold from {eco.deityBonuses.mountainRegions} mountain region(s)
+                </p>
+              )}
+              {deity.bonuses.mountainHillsGold && (eco.deityBonuses.mountainRegions + eco.deityBonuses.hillsRegions > 0) && (
+                <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                  +{eco.deityBonuses.mountainRegions + eco.deityBonuses.hillsRegions} gold from mountains/hills
+                </p>
+              )}
+              {deity.bonuses.mineGold && eco.deityBonuses.mines > 0 && (
+                <p style={{ fontSize: 12, color: "#b5e8a1" }}>
+                  +{eco.deityBonuses.mines} gold from {eco.deityBonuses.mines} mine(s)
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {isOwnerView && (
-          <div
-            className="card"
-            style={{ marginBottom: 16 }}
-          >
-            <h3 style={{ marginTop: 0 }}>
-              Choose Patron Deity
-            </h3>
-            <p
-              style={{
-                fontSize: 12,
-                color: "#c7bca5",
-                marginTop: 0,
-              }}
-            >
-              Select a deity to receive their divine
-              blessings. This can be changed at any time.
+          <div className="card" style={{ marginBottom: 16 }}>
+            <h3 style={{ marginTop: 0 }}>Choose Patron Deity</h3>
+            <p style={{ fontSize: 12, color: "#c7bca5", marginTop: 0 }}>
+              Select a deity to receive their divine blessings. This can be changed at any time.
             </p>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(200px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
                 gap: 12,
               }}
             >
@@ -1897,85 +985,40 @@ export default function Faction() {
                 onClick={() => changePatronDeity(null)}
                 style={{
                   padding: "10px 16px",
-                  background:
-                    !patronDeity
-                      ? "#3a3020"
-                      : "#241b15",
-                  border: !patronDeity
-                    ? "2px solid #d1b26b"
-                    : "1px solid #5e4934",
+                  background: !patronDeity ? "#3a3020" : "#241b15",
+                  border: !patronDeity ? "2px solid #d1b26b" : "1px solid #5e4934",
                   textAlign: "left",
                 }}
               >
                 <strong>None</strong>
                 <br />
-                <span
+                <span style={{ fontSize: 11, color: "#a89a7a" }}>No patron deity</span>
+              </button>
+              {Object.entries(DEITIES).map(([key, d]) => (
+                <button
+                  key={key}
+                  onClick={() => changePatronDeity(key)}
                   style={{
-                    fontSize: 11,
-                    color: "#a89a7a",
+                    padding: "10px 16px",
+                    background: patronDeity === key ? "#3a3020" : "#241b15",
+                    border: patronDeity === key ? "2px solid #d1b26b" : "1px solid #5e4934",
+                    textAlign: "left",
                   }}
                 >
-                  No patron deity
-                </span>
-              </button>
-              {Object.entries(DEITIES).map(
-                ([key, d]) => (
-                  <button
-                    key={key}
-                    onClick={() =>
-                      changePatronDeity(key)
-                    }
-                    style={{
-                      padding: "10px 16px",
-                      background:
-                        patronDeity === key
-                          ? "#3a3020"
-                          : "#241b15",
-                      border:
-                        patronDeity === key
-                          ? "2px solid #d1b26b"
-                          : "1px solid #5e4934",
-                      textAlign: "left",
-                    }}
-                  >
-                    <strong>{d.name}</strong>
-                    <br />
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: "#a89a7a",
-                      }}
-                    >
-                      {d.title}
-                    </span>
-                  </button>
-                )
-              )}
+                  <strong>{d.name}</strong>
+                  <br />
+                  <span style={{ fontSize: 11, color: "#a89a7a" }}>{d.title}</span>
+                </button>
+              ))}
             </div>
           </div>
         )}
 
         {currentDeity && (
           <div className="card">
-            <h3 style={{ marginTop: 0 }}>
-              {currentDeity.name}'s Blessings
-            </h3>
-            <p
-              style={{
-                fontStyle: "italic",
-                color: "#c7bca5",
-                marginBottom: 16,
-              }}
-            >
-              {currentDeity.title}
-            </p>
-            <ul
-              style={{
-                margin: 0,
-                paddingLeft: 20,
-                color: "#b5e8a1",
-              }}
-            >
+            <h3 style={{ marginTop: 0 }}>{currentDeity.name}'s Blessings</h3>
+            <p style={{ fontStyle: "italic", color: "#c7bca5", marginBottom: 16 }}>{currentDeity.title}</p>
+            <ul style={{ margin: 0, paddingLeft: 20, color: "#b5e8a1" }}>
               {currentDeity.description.map((effect, i) => (
                 <li key={i} style={{ marginBottom: 4 }}>
                   {effect}
@@ -2017,19 +1060,11 @@ export default function Faction() {
         )}
         <div style={{ flex: 1 }}>
           {isEditingFactionName ? (
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-              }}
-            >
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input
                 type="text"
                 value={editedFactionName}
-                onChange={(e) =>
-                  setEditedFactionName(e.target.value)
-                }
+                onChange={(e) => setEditedFactionName(e.target.value)}
                 placeholder={`Faction ${id}`}
                 style={{
                   fontSize: 24,
@@ -2042,79 +1077,36 @@ export default function Faction() {
                   fontFamily: "Georgia, serif",
                 }}
               />
-              <button
-                onClick={saveFactionName}
-                className="green small"
-              >
+              <button onClick={saveFactionName} className="green small">
                 Save
               </button>
-              <button
-                onClick={cancelEditFactionName}
-                className="small"
-              >
+              <button onClick={cancelEditFactionName} className="small">
                 Cancel
               </button>
             </div>
           ) : (
-            <h1
-              style={{
-                margin: 0,
-                cursor: isOwnerView
-                  ? "pointer"
-                  : "default",
-              }}
-              onClick={() =>
-                isOwnerView &&
-                setIsEditingFactionName(true)
-              }
-              title={
-                isOwnerView
-                  ? "Click to edit name"
-                  : undefined
-              }
-            >
-              {factionData?.name || `Faction ${id}`}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h1 style={{ margin: 0 }}>{factionData?.name || `Faction ${id}`}</h1>
               {isOwnerView && (
-                <span
-                  style={{
-                    fontSize: 14,
-                    color: "#a89a7a",
-                    marginLeft: 8,
-                  }}
-                >
-                  [EDIT] 
-                </span>
+                <button onClick={() => setIsEditingFactionName(true)} className="small" style={{ margin: 0 }}>
+                  Edit
+                </button>
               )}
-            </h1>
+            </div>
           )}
-          <p
-            style={{
-              margin: "4px 0 0 0",
-              color: "#a89a7a",
-              fontSize: 14,
-            }}
-          >
-            {regions.length} region
-            {regions.length !== 1 ? "s" : ""} {" "}
-            {armies.filter((a) => !a.deleted).length}{" "}
-            {armies.filter((a) => !a.deleted).length !== 1
-              ? "armies"
-              : "army"}{" "}
-             {characters.length} character
-            {characters.length !== 1 ? "s" : ""}
+          <p style={{ margin: "4px 0 0", color: "#a89a7a" }}>
+            {regions.length} region{regions.length !== 1 ? "s" : ""} •{" "}
+            {armies.filter((a) => !a.deleted).length} {armies.filter((a) => !a.deleted).length !== 1 ? "armies" : "army"} •{" "}
+            {characters.length} character{characters.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <button onClick={() => navigate("/")}>
-           Home
-        </button>
+        <button onClick={() => navigate("/")}>🏠 Home</button>
       </div>
 
-      {/* SUMMARY CARDS - 2 consolidated cards */}
+      {/* SUMMARY CARDS */}
       <div className="summary-row">
-        {/* ECONOMY CARD */}
         <div className="summary-card">
           <h3>Economy</h3>
-          {/* Income breakdown */}
           <div style={{ fontSize: 12, color: "#888", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #3a2f24" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Settlements:</span>
@@ -2147,7 +1139,6 @@ export default function Faction() {
             <span style={{ color: "#c7bca5" }}>Gross Income:</span>
             <strong>{eco?.goldPerTurn || 0}g</strong>
           </div>
-          {/* Upkeep breakdown */}
           <div style={{ fontSize: 12, color: "#888", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #3a2f24" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span>HSG troops:</span>
@@ -2174,13 +1165,10 @@ export default function Faction() {
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 8, paddingTop: 8, borderTop: "1px solid #3a2f24" }}>
             <span style={{ color: "#c7bca5" }}>Manpower:</span>
-            <strong style={{ color: (eco?.manpowerNet || 0) < 0 ? "#ff4444" : "#b5e8a1" }}>
-              {eco?.manpowerNet || 0}
-            </strong>
+            <strong style={{ color: (eco?.manpowerNet || 0) < 0 ? "#ff4444" : "#b5e8a1" }}>{eco?.manpowerNet || 0}</strong>
           </div>
         </div>
 
-        {/* MILITARY CAPACITY CARD */}
         <div className="summary-card">
           <h3>Military Capacity</h3>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #3a2f24" }}>
@@ -2196,9 +1184,7 @@ export default function Faction() {
               <span>
                 <strong>{totalLevyInfantryUnits}</strong>
                 <span style={{ color: "#888" }}> / {levyInfPotential}</span>
-                {deity?.bonuses.levyInfantryCF && (
-                  <span style={{ fontSize: 10, color: "#b5e8a1", marginLeft: 4 }}>+1 CF</span>
-                )}
+                {deity?.bonuses.levyInfantryCF && <span style={{ fontSize: 10, color: "#b5e8a1", marginLeft: 4 }}>+1 CF</span>}
               </span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -2206,9 +1192,7 @@ export default function Faction() {
               <span>
                 <strong>{totalLevyArcherUnits}</strong>
                 <span style={{ color: "#888" }}> / {levyArchPotential}</span>
-                {deity?.bonuses.farmLevyBonus && (
-                  <span style={{ fontSize: 10, color: "#b5e8a1", marginLeft: 4 }}>Altaea</span>
-                )}
+                {deity?.bonuses.farmLevyBonus && <span style={{ fontSize: 10, color: "#b5e8a1", marginLeft: 4 }}>Altaea</span>}
               </span>
             </div>
           </div>
@@ -2217,88 +1201,47 @@ export default function Faction() {
 
       {/* TABS */}
       <div className="tabs">
-        <button
-          className={`tab ${
-            activeTab === "regions" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("regions")}
-        >
-          Regions
-        </button>
-        <button
-          className={`tab ${
-            activeTab === "army" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("army")}
-        >
-          Army & Navy
-        </button>
-        <button
-          className={`tab ${
-            activeTab === "agents" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("agents")}
-        >
-          Agents
-        </button>
-        <button
-          className={`tab ${
-            activeTab === "mailbox" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("mailbox")}
-          style={{ position: "relative" }}
-        >
-          Mailbox
-          {unreadCount > 0 && (
-            <span style={{
-              position: "absolute",
-              top: "-4px",
-              right: "-4px",
-              background: "#ef4444",
-              color: "#fff",
-              fontSize: "10px",
-              fontWeight: "bold",
-              padding: "2px 6px",
-              borderRadius: "10px",
-              minWidth: "16px",
-              textAlign: "center",
-            }}>
-              {unreadCount}
-            </span>
-          )}
-        </button>
-        <button
-          className={`tab ${
-            activeTab === "characters" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("characters")}
-        >
-          Characters
-        </button>
-        <button
-          className={`tab ${
-            activeTab === "religion" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("religion")}
-        >
-          Religion
-        </button>
-        <button
-          className={`tab ${
-            activeTab === "court" ? "active" : ""
-          }`}
-          onClick={() => setActiveTab("court")}
-        >
-          High Court
-        </button>
+        {["regions", "army", "agents", "mailbox", "characters", "religion", "court"].map((tab) => (
+          <button
+            key={tab}
+            className={`tab ${activeTab === tab ? "active" : ""}`}
+            onClick={() => setActiveTab(tab)}
+            style={{ position: "relative" }}
+          >
+            {tab === "regions" && "Regions"}
+            {tab === "army" && "Army & Navy"}
+            {tab === "agents" && "Agents"}
+            {tab === "mailbox" && "Mailbox"}
+            {tab === "characters" && "Characters"}
+            {tab === "religion" && "Religion"}
+            {tab === "court" && "High Court"}
+            {tab === "mailbox" && unreadCount > 0 && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: "-4px",
+                  right: "-4px",
+                  background: "#ef4444",
+                  color: "#fff",
+                  fontSize: "10px",
+                  fontWeight: "bold",
+                  padding: "2px 6px",
+                  borderRadius: "10px",
+                  minWidth: "16px",
+                  textAlign: "center",
+                }}
+              >
+                {unreadCount}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* REGIONS TAB */}
       {activeTab === "regions" && (
         <>
-          {regions.length === 0 && (
-            <p>No regions found.</p>
-          )}
+          {regions.length === 0 && <p>No regions found.</p>}
           {regions.map((region) => (
             <RegionCard
               key={region.id}
@@ -2325,64 +1268,27 @@ export default function Faction() {
               </p>
               {isOwnerView && (
                 <div className="army-controls">
-                  <button
-                    onClick={() => changeWarships(-1)}
-                  >
-                    -
-                  </button>
-                  <button
-                    onClick={() => changeWarships(1)}
-                  >
-                    +
-                  </button>
+                  <button onClick={() => changeWarships(-1)}>-</button>
+                  <button onClick={() => changeWarships(1)}>+</button>
                 </div>
               )}
-              <p
-                style={{
-                  marginTop: 6,
-                  fontSize: 12,
-                  color: "#c7bca5",
-                }}
-              >
-                Upkeep:{" "}
-                {getModifiedUpkeep(
-                  "warships",
-                  3,
-                  patronDeity
-                )}{" "}
-                gold/turn per warship
-                {deity?.bonuses.warshipUpkeep && (
-                  <span
-                    style={{
-                      color: "#b5e8a1",
-                    }}
-                  >
-                    {" "}
-                    (Trengar bonus)
-                  </span>
-                )}
+              <p style={{ marginTop: 6, fontSize: 12, color: "#c7bca5" }}>
+                Upkeep: {getModifiedUpkeep("warships", 3, patronDeity)} gold/turn per warship
+                {deity?.bonuses.warshipUpkeep && <span style={{ color: "#b5e8a1" }}> (Trengar bonus)</span>}
               </p>
-              <div
-                style={{
-                  marginTop: "8px",
-                  paddingTop: "8px",
-                  borderTop:
-                    "1px solid #4c3b2a",
-                }}
-              >
-                <strong>Total Navy Upkeep:</strong>{" "}
-                {navyGoldUpkeep} gold/turn
+              <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #4c3b2a" }}>
+                <strong>Total Navy Upkeep:</strong> {navyGoldUpkeep} gold/turn
               </div>
             </div>
 
-            {courtBonuses.positions.some(p => p.position === 'Lord Marshal') && (
+            {courtBonuses.positions.some((p) => p.position === "Lord Marshal") && (
               <div className="summary-card">
                 <h3>Army Capacity</h3>
                 <p style={{ color: "#8B008B", fontSize: 14 }}>
                   <strong>Lord Marshal Bonus:</strong> Can maintain up to {maxArmyCap} armies
                 </p>
                 <p style={{ fontSize: 12, color: "#c7bca5" }}>
-                  Current armies: {armies.filter(a => !a.deleted).length} / {maxArmyCap}
+                  Current armies: {armies.filter((a) => !a.deleted).length} / {maxArmyCap}
                 </p>
               </div>
             )}
@@ -2390,76 +1296,20 @@ export default function Faction() {
             {deity?.bonuses.armyMovement && (
               <div className="summary-card">
                 <h3>Divine Movement</h3>
-                <p
-                  style={{
-                    color: "#b5e8a1",
-                    fontSize: 14,
-                  }}
-                >
-                  <strong>
-                    Kurimbor's Blessing:
-                  </strong>{" "}
-                  Armies can move 2 regions per turn
-                </p>
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: "#c7bca5",
-                  }}
-                >
-                  This bonus is handled at the table
+                <p style={{ color: "#b5e8a1", fontSize: 14 }}>
+                  <strong>Kurimbor's Blessing:</strong> Armies can move +1 region per turn
                 </p>
               </div>
             )}
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginTop: 16,
-              marginBottom: 8,
-            }}
-          >
-            <h2
-              style={{
-                fontSize: 18,
-                margin: 0,
-              }}
-            >
-              Armies ({armies.filter(a => !a.deleted).length}/{maxArmyCap})
-            </h2>
-            {isOwnerView && (
-              <button
-                className="green"
-                onClick={addArmy}
-                disabled={armies.filter(a => !a.deleted).length >= maxArmyCap}
-              >
-                + Raise New Army
-              </button>
-            )}
-          </div>
-
-          {deity?.bonuses.levyInfantryCF && (
-            <p
-              style={{
-                fontSize: 12,
-                color: "#b5e8a1",
-                marginBottom: 8,
-              }}
-            >
-              * Seyluna grants +1 Combat Factor to all
-              Levy Infantry
-            </p>
+          {isOwnerView && (
+            <button onClick={createArmy} className="green" style={{ marginBottom: 16 }}>
+              + Create Army
+            </button>
           )}
 
-          {armies.length === 0 && (
-            <p style={{ color: "#c7bca5" }}>
-              No armies yet. Use "Raise New Army" to
-              create one and assign units to it.
-            </p>
-          )}
+          {armies.filter((a) => !a.deleted).length === 0 && <p style={{ color: "#c7bca5" }}>No armies yet. Create your first!</p>}
 
           {armies
             .filter((a) => !a.deleted)
@@ -2483,395 +1333,172 @@ export default function Faction() {
         </>
       )}
 
-      {/* AGENTS TAB (combined with Missions) */}
+      {/* AGENTS TAB */}
       {activeTab === "agents" && (
         <>
-          {/* Sub-tab toggle */}
-          <div style={{ 
-            display: "flex", 
-            gap: 8, 
-            marginBottom: 16,
-            borderBottom: "1px solid #3a2f24",
-            paddingBottom: 12
-          }}>
-            <button
-              onClick={() => setAgentSubTab("roster")}
-              style={{
-                padding: "8px 16px",
-                background: agentSubTab === "roster" ? "#30425d" : "transparent",
-                border: agentSubTab === "roster" ? "1px solid #d1b26b" : "1px solid #5e4934",
-                borderRadius: 6,
-                color: agentSubTab === "roster" ? "#f9f4e6" : "#c7bca5",
-                cursor: "pointer",
-                fontSize: 14,
-              }}
-            >
+          <div style={{ marginBottom: 16, display: "flex", gap: 8 }}>
+            <button className={agentSubTab === "roster" ? "green" : ""} onClick={() => setAgentSubTab("roster")}>
               Agent Roster
             </button>
-            <button
-              onClick={() => setAgentSubTab("missions")}
-              style={{
-                padding: "8px 16px",
-                background: agentSubTab === "missions" ? "#30425d" : "transparent",
-                border: agentSubTab === "missions" ? "1px solid #d1b26b" : "1px solid #5e4934",
-                borderRadius: 6,
-                color: agentSubTab === "missions" ? "#f9f4e6" : "#c7bca5",
-                cursor: "pointer",
-                fontSize: 14,
-              }}
-            >
+            <button className={agentSubTab === "missions" ? "green" : ""} onClick={() => setAgentSubTab("missions")}>
               Missions
             </button>
           </div>
 
-          {/* Sub-tab content */}
-          {agentSubTab === "roster" && renderAgentsTab()}
+          {agentSubTab === "roster" && (
+            <>
+              <div className="summary-row">
+                <div className="summary-card">
+                  <h3>Agent Capacity</h3>
+                  <p>
+                    Agents: <strong>{agentsCount}</strong> / {maxAgents}
+                  </p>
+                  <p style={{ fontSize: 12, color: "#c7bca5" }}>1 per Town, 2 per City</p>
+                </div>
+
+                <div className="summary-card">
+                  <h3>Agent Upkeep (Gold)</h3>
+                  <p>
+                    Total agent upkeep: <strong>{totalAgentUpkeep}</strong> gold/turn
+                    {patronDeity === "comnea" && agents.some((a) => a.type === "agitator") && (
+                      <span style={{ color: "#b5e8a1", fontSize: 11 }}> (Comnea bonus applied)</span>
+                    )}
+                  </p>
+                  <p style={{ fontSize: 12, color: "#c7bca5" }}>
+                    Spy: 1g, Agitator: {getModifiedUpkeep("agitator", 4, patronDeity)}g, Enforcer: 2g per turn.
+                  </p>
+                  {patronDeity === "comnea" && <p style={{ fontSize: 12, color: "#b5e8a1" }}>New agents start at level 2</p>}
+                </div>
+              </div>
+
+              {canEditAgents && (
+                <div className="card" style={{ marginTop: 8, marginBottom: 16 }}>
+                  <h3 style={{ marginTop: 0 }}>Hire New Agent</h3>
+                  <p style={{ fontSize: 12, color: "#c7bca5", marginTop: 0, marginBottom: 12 }}>
+                    Agents are managed at the table. GM and players can adjust levels and locations. Upkeep: Spy 1g, Agitator{" "}
+                    {getModifiedUpkeep("agitator", 4, patronDeity)}g, Enforcer 2g per turn.
+                    {patronDeity === "comnea" && <span style={{ color: "#b5e8a1" }}> New agents start at level 2!</span>}
+                  </p>
+                  <form
+                    onSubmit={handleHireAgent}
+                    className="agent-hire-form"
+                    style={{ gridTemplateColumns: "auto minmax(180px, 1fr) minmax(180px, 1fr) auto" }}
+                  >
+                    <label style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>Type:</span>
+                      <select
+                        value={newAgentType}
+                        onChange={(e) => setNewAgentType(e.target.value)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                          border: "1px solid #5e4934",
+                          background: "#241b15",
+                          color: "#f4efe4",
+                          fontFamily: "Georgia, serif",
+                          fontSize: 14,
+                        }}
+                      >
+                        <option value="spy">Spy (1g)</option>
+                        <option value="agitator">Agitator ({getModifiedUpkeep("agitator", 4, patronDeity)}g)</option>
+                        <option value="enforcer">Enforcer (2g)</option>
+                      </select>
+                    </label>
+
+                    <input
+                      type="text"
+                      placeholder="Agent name (optional)"
+                      value={newAgentName}
+                      onChange={(e) => setNewAgentName(e.target.value)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        border: "1px solid #5e4934",
+                        background: "#1d1610",
+                        color: "#f3eadc",
+                        fontFamily: "Georgia, serif",
+                        fontSize: 14,
+                      }}
+                    />
+
+                    <select
+                      value={newAgentLocation}
+                      onChange={(e) => setNewAgentLocation(e.target.value)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        border: "1px solid #5e4934",
+                        background: "#241b15",
+                        color: "#f4efe4",
+                        fontFamily: "Georgia, serif",
+                        fontSize: 14,
+                      }}
+                    >
+                      <option value="">Starting location (optional)</option>
+                      {allRegions
+                        .sort((a, b) => (a.code || "").localeCompare(b.code || ""))
+                        .map((r) => (
+                          <option key={r.id} value={r.code || r.id}>
+                            [{r.code}] {r.name}
+                          </option>
+                        ))}
+                    </select>
+
+                    <button type="submit" className="green">
+                      Hire Agent
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {agents.length === 0 && (
+                <p style={{ color: "#c7bca5" }}>No agents yet. Hire agents to gather intelligence and destabilize rivals.</p>
+              )}
+
+              {agents.filter((a) => !a.deleted).map(renderAgentCard)}
+            </>
+          )}
+
           {agentSubTab === "missions" && (
             <AgentMissions
+              agents={agents}
+              allAgents={allAgents}
+              allRegions={allRegions}
+              allCharacters={allCharacters}
               factionId={Number(id)}
               factionName={factionData?.name || `Faction ${id}`}
-              agents={agents.filter(a => !a.deleted)}
-              allRegions={allRegions}
-              allArmies={allArmies.filter(a => !a.deleted)}
-              allCharacters={allCharacters}
-              revealedEnemyAgents={allAgents.filter(a => 
-                a.revealed && 
-                a.factionId !== Number(id) && 
-                !a.deleted
-              )}
-              isOwner={isOwnerView}
+              patronDeity={patronDeity}
+              isGM={isGM}
             />
           )}
         </>
       )}
 
-      {/* MAILBOX TAB */}
+      {/* MAILBOX TAB - Now using shared Mailbox component */}
       {activeTab === "mailbox" && (
-        <div>
-          <div style={{ 
-            display: "flex", 
-            justifyContent: "space-between", 
-            alignItems: "center",
-            marginBottom: "20px"
-          }}>
-            <h2 style={{ margin: 0 }}> Royal Correspondence</h2>
-            {isOwnerView && (
-              <button 
-                className="green"
-                onClick={() => setComposeOpen(true)}
-              >
-                 Compose Message
-              </button>
-            )}
-          </div>
-
-          {/* Compose Modal */}
-          {composeOpen && (
-            <div style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: "rgba(0,0,0,0.8)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1000,
-            }}>
-              <div style={{
-                background: "#1a1410",
-                border: "2px solid #5e4934",
-                borderRadius: "12px",
-                padding: "24px",
-                maxWidth: "500px",
-                width: "90%",
-              }}>
-                <h3 style={{ marginTop: 0 }}>Compose Message</h3>
-                
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "6px", fontSize: "13px" }}>
-                    Send To:
-                  </label>
-                  <select
-                    value={composeTo}
-                    onChange={(e) => setComposeTo(e.target.value)}
-                    style={{ width: "100%" }}
-                  >
-                    <option value="gm">Game Master (No word limit)</option>
-                    {Object.entries(allFactionNames)
-                      .filter(([fId]) => Number(fId) !== Number(id))
-                      .map(([fId, name]) => (
-                        <option key={fId} value={fId}>
-                          {name} (250 char limit)
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "6px", fontSize: "13px" }}>
-                    Message: {composeTo !== "gm" && (
-                      <span style={{ 
-                        color: composeBody.trim().length > 250 ? "#ef4444" : 
-                               composeBody.trim().length > 200 ? "#f97316" : "#c7bca5"
-                      }}>
-                        ({composeBody.trim().length}/250 characters)
-                      </span>
-                    )}
-                  </label>
-                  <textarea
-                    value={composeBody}
-                    onChange={(e) => setComposeBody(e.target.value)}
-                    placeholder={composeTo === "gm" 
-                      ? "Write your message to the Game Master..." 
-                      : "Write your message (250 characters max)..."}
-                    style={{ 
-                      width: "100%", 
-                      minHeight: "100px",
-                      resize: "vertical"
-                    }}
-                  />
-                </div>
-
-                {/* Preview */}
-                {composeBody.trim() && (
-                  <div style={{
-                    background: "#0a0806",
-                    border: "1px solid #3a2f24",
-                    borderRadius: "8px",
-                    padding: "16px",
-                    marginBottom: "16px",
-                  }}>
-                    <div style={{ fontSize: "11px", color: "#a89a7a", marginBottom: "8px" }}>
-                      Preview:
-                    </div>
-                    <p style={{ 
-                      fontStyle: "italic", 
-                      margin: 0,
-                      color: "#f4efe4",
-                      lineHeight: "1.6"
-                    }}>
-                      My Lord,
-                      <br /><br />
-                      {composeBody.trim()}
-                      <br /><br />
-                      Signed,
-                      <br />
-                      {factionData?.name || `Lord of Faction ${id}`}
-                    </p>
-                  </div>
-                )}
-
-                <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
-                  <button onClick={() => {
-                    setComposeOpen(false);
-                    setComposeBody("");
-                  }}>
-                    Cancel
-                  </button>
-                  <button 
-                    className="green"
-                    onClick={sendMessage}
-                    disabled={!composeBody.trim()}
-                  >
-                    Send Raven
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Message List */}
-          {messages.length === 0 ? (
-            <div style={{ 
-              textAlign: "center", 
-              color: "#a89a7a",
-              padding: "40px",
-              background: "#1a1410",
-              borderRadius: "8px",
-              border: "1px solid #3a2f24"
-            }}>
-              <div style={{ fontSize: "48px", marginBottom: "12px" }}></div>
-              <p>Your mailbox is empty.</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {messages.map(msg => (
-                <div
-                  key={msg.id}
-                  onClick={() => {
-                    setSelectedMessage(msg);
-                    if (!msg.read) markMessageRead(msg.id);
-                  }}
-                  style={{
-                    padding: "16px",
-                    background: msg.read ? "#1a1410" : "#1f1a14",
-                    border: `1px solid ${msg.read ? "#3a2f24" : "#5e4934"}`,
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    transition: "border-color 0.2s",
-                  }}
-                >
-                  <div style={{ 
-                    display: "flex", 
-                    justifyContent: "space-between",
-                    alignItems: "flex-start"
-                  }}>
-                    <div>
-                      <div style={{ 
-                        fontWeight: msg.read ? "normal" : "bold",
-                        color: msg.read ? "#c7bca5" : "#f4efe4",
-                        marginBottom: "4px"
-                      }}>
-                        {msg.type === "mission" ? " Mission Report" : " Message"}: From {msg.fromFactionName || (msg.toType === "gm" ? "System" : "Unknown")}
-                      </div>
-                      <div style={{ fontSize: "12px", color: "#a89a7a" }}>
-                        {msg.createdAt?.toDate?.().toLocaleDateString() || "Unknown date"}
-                      </div>
-                    </div>
-                    {!msg.read && (
-                      <span style={{
-                        background: "#d4a32c",
-                        color: "#000",
-                        fontSize: "10px",
-                        fontWeight: "bold",
-                        padding: "2px 8px",
-                        borderRadius: "4px",
-                      }}>
-                        NEW
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Message Detail Modal */}
-          {selectedMessage && (
-            <div style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: "rgba(0,0,0,0.8)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1000,
-            }}>
-              <div style={{
-                background: "#1a1410",
-                border: "2px solid #5e4934",
-                borderRadius: "12px",
-                padding: "24px",
-                maxWidth: "600px",
-                width: "90%",
-                maxHeight: "80vh",
-                overflow: "auto",
-              }}>
-                <div style={{ 
-                  display: "flex", 
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  marginBottom: "16px"
-                }}>
-                  <div>
-                    <h3 style={{ margin: 0 }}>
-                      {selectedMessage.type === "mission" ? " Mission Report" : " Royal Message"}
-                    </h3>
-                    <div style={{ fontSize: "12px", color: "#a89a7a", marginTop: "4px" }}>
-                      From: {selectedMessage.fromFactionName || "System"}  {selectedMessage.createdAt?.toDate?.().toLocaleDateString()}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{
-                  background: "#0a0806",
-                  border: "1px solid #3a2f24",
-                  borderRadius: "8px",
-                  padding: "20px",
-                  marginBottom: "16px",
-                }}>
-                  {selectedMessage.type === "mission" ? (
-                    <div>
-                      <div style={{ 
-                        color: selectedMessage.success ? "#4ade80" : "#ef4444",
-                        fontWeight: "bold",
-                        marginBottom: "12px",
-                        fontSize: "16px"
-                      }}>
-                        {selectedMessage.success ? " Mission Successful" : " Mission Failed"}
-                      </div>
-                      <p style={{ 
-                        fontStyle: "italic", 
-                        margin: 0,
-                        color: "#f4efe4",
-                        lineHeight: "1.6"
-                      }}>
-                        My Lord,
-                        <br /><br />
-                        {selectedMessage.body}
-                        <br /><br />
-                        <span style={{ color: "#a89a7a" }}>- Your humble spymaster</span>
-                      </p>
-                    </div>
-                  ) : (
-                    <p style={{ 
-                      fontStyle: "italic", 
-                      margin: 0,
-                      color: "#f4efe4",
-                      lineHeight: "1.6"
-                    }}>
-                      My Lord,
-                      <br /><br />
-                      {selectedMessage.body}
-                      <br /><br />
-                      Signed,
-                      <br />
-                      {selectedMessage.fromFactionName}
-                    </p>
-                  )}
-                </div>
-
-                <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
-                  <button 
-                    onClick={() => deleteMessage(selectedMessage.id)}
-                    style={{ 
-                      background: "#3a2020",
-                      borderColor: "#5a3030"
-                    }}
-                  >
-                     Delete
-                  </button>
-                  <button onClick={() => setSelectedMessage(null)}>
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <Mailbox
+          messages={messages}
+          recipients={messageRecipients}
+          senderName={factionData?.name || `Lord of Faction ${id}`}
+          myFactionId={Number(id)}
+          onSend={sendMessage}
+          onMarkRead={markMessageRead}
+          onDelete={deleteMessage}
+          maxLength={250}
+          isGM={false}
+          canCompose={isOwnerView}
+        />
       )}
 
       {/* CHARACTERS TAB */}
-      {activeTab === "characters" &&
-        renderCharactersTab()}
+      {activeTab === "characters" && renderCharactersTab()}
 
       {/* RELIGION TAB */}
-      {activeTab === "religion" &&
-        renderReligionTab()}
+      {activeTab === "religion" && renderReligionTab()}
 
       {/* COURT TAB */}
       {activeTab === "court" && (
-        <Court 
-          isGM={isGM}
-          myFactionId={Number(id)}
-          factionNames={allFactionNames}
-          patronDeity={patronDeity}
-        />
+        <Court isGM={isGM} myFactionId={Number(id)} factionNames={allFactionNames} patronDeity={patronDeity} />
       )}
     </div>
   );
