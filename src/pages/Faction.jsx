@@ -444,6 +444,7 @@ export default function Faction() {
           name: data.name || "",
           patronDeity: data.patronDeity || null,
           crest: data.crest || DEFAULT_CRESTS[String(id)] || null,
+          capital: data.capital || null,
         });
         setPatronDeity(data.patronDeity || null);
         setEditedFactionName(data.name || "");
@@ -474,14 +475,24 @@ export default function Faction() {
     setIsEditingFactionName(false);
   }
 
+  async function setCapital(regionCode) {
+    if (!isOwnerView) return;
+    if (factionData?.capital) {
+      show("Capital Already Set", "Your capital has already been established and cannot be changed.");
+      return;
+    }
+    const ref = doc(db, "factions", String(id));
+    await updateDoc(ref, { capital: regionCode });
+    show("Capital Established", `Your capital has been established at [${regionCode}]. This cannot be changed.`);
+  }
+
   // Mailbox functions
   async function sendMessage() {
     if (!composeBody.trim()) return;
     
-    // Word count check for player-to-player messages
-    const wordCount = composeBody.trim().split(/\s+/).length;
-    if (composeTo !== "gm" && wordCount > 10) {
-      show("Message Too Long", "Messages to other lords are limited to 10 words.");
+    // Character count check for player-to-player messages (250 char max)
+    if (composeTo !== "gm" && composeBody.trim().length > 250) {
+      show("Message Too Long", "Messages to other lords are limited to 250 characters.");
       return;
     }
 
@@ -715,14 +726,36 @@ export default function Faction() {
 
   async function updateArmyCommanders(armyId, commanderIds) {
     if (!isOwnerView) return;
-    const ref = doc(
+    
+    // Find the army to get current commanders
+    const army = armies.find(a => a.id === armyId);
+    const oldCommanders = army?.commanders || [];
+    
+    // Find commanders that were removed
+    const removedCommanders = oldCommanders.filter(cmdId => !commanderIds.includes(cmdId));
+    
+    // Update the army
+    const armyRef = doc(
       db,
       "factions",
       String(id),
       "armies",
       armyId
     );
-    await updateDoc(ref, { commanders: commanderIds });
+    await updateDoc(armyRef, { commanders: commanderIds });
+    
+    // Update location of removed commanders to capital
+    const capital = factionData?.capital;
+    for (const cmdId of removedCommanders) {
+      const charRef = doc(
+        db,
+        "factions",
+        String(id),
+        "characters",
+        cmdId
+      );
+      await updateDoc(charRef, { location: capital || null });
+    }
   }
 
   async function changeWarships(delta) {
@@ -765,9 +798,10 @@ export default function Faction() {
   const cityCount = eco?.cityCount || 0;
 
   const maxAgents = townCount * 1 + cityCount * 2;
-  const agentsCount = agents.length;
+  const activeAgents = agents.filter(a => !a.deleted);
+  const agentsCount = activeAgents.length;
 
-  const totalAgentUpkeep = agents.reduce((sum, a) => {
+  const totalAgentUpkeep = activeAgents.reduce((sum, a) => {
     const baseUpkeep = AGENT_UPKEEP[a.type] || 0;
     return (
       sum +
@@ -853,6 +887,7 @@ export default function Faction() {
       lastName: newCharLastName.trim() || "",
       ...stats,
       courtPosition: "",
+      location: factionData?.capital || null,
       createdAt: new Date(),
     });
 
@@ -1132,7 +1167,7 @@ export default function Faction() {
                       }}
                       title="Hide agent (remove revealed status)"
                     >
-                      ✕
+                      
                     </button>
                   )}
                 </span>
@@ -1646,6 +1681,7 @@ export default function Faction() {
               isGM={isGM}
               patronDeity={patronDeity}
               courtBonuses={courtBonuses}
+              armies={armies}
               onUpdateField={updateCharacterField}
               onDelete={deleteCharacter}
             />
@@ -2337,6 +2373,8 @@ export default function Faction() {
               role={role}
               myFactionId={myFactionId}
               patronDeity={patronDeity}
+              capital={factionData?.capital}
+              onSetCapital={setCapital}
             />
           ))}
         </>
@@ -2590,7 +2628,7 @@ export default function Faction() {
                       .filter(([fId]) => Number(fId) !== Number(id))
                       .map(([fId, name]) => (
                         <option key={fId} value={fId}>
-                          {name} (10 word limit)
+                          {name} (250 char limit)
                         </option>
                       ))}
                   </select>
@@ -2599,8 +2637,11 @@ export default function Faction() {
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", marginBottom: "6px", fontSize: "13px" }}>
                     Message: {composeTo !== "gm" && (
-                      <span style={{ color: "#c7bca5" }}>
-                        ({composeBody.trim().split(/\s+/).filter(w => w).length}/10 words)
+                      <span style={{ 
+                        color: composeBody.trim().length > 250 ? "#ef4444" : 
+                               composeBody.trim().length > 200 ? "#f97316" : "#c7bca5"
+                      }}>
+                        ({composeBody.trim().length}/250 characters)
                       </span>
                     )}
                   </label>
@@ -2609,7 +2650,7 @@ export default function Faction() {
                     onChange={(e) => setComposeBody(e.target.value)}
                     placeholder={composeTo === "gm" 
                       ? "Write your message to the Game Master..." 
-                      : "Write your brief message (10 words max)..."}
+                      : "Write your message (250 characters max)..."}
                     style={{ 
                       width: "100%", 
                       minHeight: "100px",
@@ -2636,9 +2677,13 @@ export default function Faction() {
                       color: "#f4efe4",
                       lineHeight: "1.6"
                     }}>
-                      My Lord, {composeBody.trim()}
+                      My Lord,
                       <br /><br />
-                      Signed, {factionData?.name || `Faction ${id}`}
+                      {composeBody.trim()}
+                      <br /><br />
+                      Signed,
+                      <br />
+                      {factionData?.name || `Faction ${id}`}
                     </p>
                   </div>
                 )}
@@ -2791,9 +2836,11 @@ export default function Faction() {
                         color: "#f4efe4",
                         lineHeight: "1.6"
                       }}>
-                        My Lord, {selectedMessage.body}
+                        My Lord,
                         <br /><br />
-                        <span style={{ color: "#a89a7a" }}> Intelligence Report</span>
+                        {selectedMessage.body}
+                        <br /><br />
+                        <span style={{ color: "#a89a7a" }}>— Your humble spymaster</span>
                       </p>
                     </div>
                   ) : (
@@ -2803,9 +2850,13 @@ export default function Faction() {
                       color: "#f4efe4",
                       lineHeight: "1.6"
                     }}>
-                      My Lord, {selectedMessage.body}
+                      My Lord,
                       <br /><br />
-                      Signed, {selectedMessage.fromFactionName}
+                      {selectedMessage.body}
+                      <br /><br />
+                      Signed,
+                      <br />
+                      {selectedMessage.fromFactionName}
                     </p>
                   )}
                 </div>

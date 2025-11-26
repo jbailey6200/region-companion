@@ -223,7 +223,7 @@ export default function Home() {
             onClick={handleBackToSelection}
             style={{ marginBottom: "16px" }}
           >
-            ← Back to Selection
+            ← Back to Selection
           </button>
 
           {selectedRole !== "gm" && info?.crest && (

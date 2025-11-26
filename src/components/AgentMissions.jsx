@@ -210,12 +210,15 @@ export default function AgentMissions({
       if (selectedTarget) {
         if (missionConfig.requiresCommanderTarget) {
           const target = validTargets.find(t => t.id === selectedTarget);
+          // Find the army to get its factionId
+          const targetArmy = allArmies?.find(a => a.id === target?.armyId);
           targetInfo = {
             type: 'commander',
             id: selectedTarget,
             name: target ? `${target.firstName} ${target.lastName}` : 'Unknown',
             prowess: target?.prowess || 1,
             armyId: target?.armyId,
+            factionId: targetArmy?.factionId || null,
           };
         } else if (missionConfig.requiresAgentTarget) {
           const target = revealedEnemyAgents.find(a => a.id === selectedTarget);
@@ -224,6 +227,7 @@ export default function AgentMissions({
             id: selectedTarget,
             name: target?.name || 'Unknown',
             level: target?.level || 1,
+            factionId: target?.factionId || null,
           };
         } else if (missionConfig.requiresLeaderTarget) {
           const target = allCharacters.find(c => c.id === selectedTarget);
@@ -233,6 +237,7 @@ export default function AgentMissions({
             name: target ? `${target.firstName} ${target.lastName}` : 'Unknown',
             prowess: target?.prowess || 1,
             intrigue: target?.intrigue || 1,
+            factionId: target?.factionId || null,
           };
         } else if (missionConfig.requiresArmyTarget) {
           const target = validTargets.find(t => t.id === selectedTarget);
@@ -240,6 +245,7 @@ export default function AgentMissions({
             type: 'army',
             id: selectedTarget,
             name: target?.name || 'Unknown',
+            factionId: target?.factionId || null,
           };
         }
       }
@@ -292,13 +298,13 @@ export default function AgentMissions({
 
   return (
     <div>
-      <h2 style={{ marginBottom: "16px" }}>🕵️ Agent Missions</h2>
+      <h2 style={{ marginBottom: "16px" }}> Agent Missions </h2>
 
       {/* Pending Missions */}
       {pendingMissions.length > 0 && (
         <div style={{ marginBottom: "24px" }}>
           <h3 style={{ fontSize: "16px", marginBottom: "12px", color: "#fbbf24" }}>
-            ⏳ Pending Missions ({pendingMissions.length})
+            â³ Pending Missions ({pendingMissions.length})
           </h3>
           {pendingMissions.map(mission => (
             <div
@@ -314,7 +320,7 @@ export default function AgentMissions({
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <strong>{mission.agentName}</strong>
-                  <span style={{ color: "#a89a7a", margin: "0 8px" }}>→</span>
+                  <span style={{ color: "#a89a7a", margin: "0 8px" }}>â†’</span>
                   <span style={{ color: "#d1b26b" }}>{mission.missionName}</span>
                   <span style={{ color: "#a89a7a", margin: "0 8px" }}>in</span>
                   <span>[{mission.regionCode}] {mission.regionName}</span>
@@ -326,7 +332,7 @@ export default function AgentMissions({
                   fontSize: "12px",
                   color: mission.status === 'approved' ? "#4ade80" : "#fbbf24",
                 }}>
-                  {mission.status === 'approved' ? '✓ Ready to Roll' : '⏳ Awaiting Approval'}
+                  {mission.status === 'approved' ? 'âœ“ Ready to Roll' : 'â³ Awaiting Approval'}
                 </span>
               </div>
               {mission.target && (
@@ -385,7 +391,7 @@ export default function AgentMissions({
               color: "#ff6b6b",
               fontSize: "13px",
             }}>
-              ⚠️ This agent has no location assigned. Please set their location in the Agents tab before assigning missions.
+              âš ï¸ This agent has no location assigned. Please set their location in the Agents tab before assigning missions.
             </div>
           )}
 
@@ -595,7 +601,7 @@ export default function AgentMissions({
       {completedMissions.length > 0 && (
         <div>
           <h3 style={{ fontSize: "16px", marginBottom: "12px" }}>
-            📜 Mission History
+            ðŸ“œ Mission History
           </h3>
           {completedMissions.map(mission => {
             const outcomeStyle = OUTCOME_STYLES[mission.result?.outcome] || {};
@@ -613,7 +619,7 @@ export default function AgentMissions({
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <strong>{mission.agentName}</strong>
-                    <span style={{ color: "#a89a7a", margin: "0 8px" }}>→</span>
+                    <span style={{ color: "#a89a7a", margin: "0 8px" }}>â†’</span>
                     <span>{mission.missionName}</span>
                     <span style={{ color: "#a89a7a", margin: "0 8px" }}>in</span>
                     <span>[{mission.regionCode}]</span>
@@ -649,10 +655,10 @@ export default function AgentMissions({
                       (margin: {mission.result.margin > 0 ? '+' : ''}{mission.result.margin})
                     </span>
                     {mission.result.agentFate === 'dead' && (
-                      <span style={{ color: "#ef4444", marginLeft: "10px" }}>💀 Agent was killed</span>
+                      <span style={{ color: "#ef4444", marginLeft: "10px" }}>ðŸ’€ Agent was killed</span>
                     )}
                     {mission.result.agentFate === 'revealed' && (
-                      <span style={{ color: "#f97316", marginLeft: "10px" }}>👁 Agent was revealed</span>
+                      <span style={{ color: "#f97316", marginLeft: "10px" }}>ðŸ‘ Agent was revealed</span>
                     )}
                   </div>
                 )}
@@ -666,7 +672,7 @@ export default function AgentMissions({
                   }}>
                     <div style={{ color: "#4ade80", marginBottom: "4px" }}>Effects:</div>
                     {mission.effects.map((effect, idx) => (
-                      <div key={idx} style={{ color: "#a89a7a", marginLeft: "10px" }}>• {effect}</div>
+                      <div key={idx} style={{ color: "#a89a7a", marginLeft: "10px" }}>â€¢ {effect}</div>
                     ))}
                   </div>
                 )}

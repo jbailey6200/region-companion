@@ -28,7 +28,7 @@ import {
 } from "../config/agentMissions";
 import { getAdjacentRegions } from "../config/hexUtils";
 
-export default function GMMissionPanel({ factionNames, allRegions, allAgents }) {
+export default function GMMissionPanel({ factionNames, allRegions, allAgents, allCharacters, allArmies }) {
   const [pendingMissions, setPendingMissions] = useState([]);
   const [approvedMissions, setApprovedMissions] = useState([]);
   const [completedMissions, setCompletedMissions] = useState([]);
@@ -235,6 +235,177 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
         missionId: mission.id,
       });
 
+      // Send victim notification if mission affects another faction
+      // This includes: successful missions, OR failed missions where agent was killed/revealed
+      const shouldNotifyVictim = result.success || result.agentFate === 'dead' || result.agentFate === 'revealed';
+      
+      if (shouldNotifyVictim) {
+        let victimFactionId = null;
+        let victimMessageBody = "";
+        
+        // Check if the agent was previously revealed (before this mission)
+        const agentData = allAgents?.find(a => a.id === mission.agentId);
+        const wasAlreadyRevealed = agentData?.revealed || false;
+        
+        // Agent is known if: they were already revealed, or they got revealed/killed this mission
+        const agentIsKnown = wasAlreadyRevealed || result.agentFate === 'revealed' || result.agentFate === 'dead';
+        
+        const attackerInfo = agentIsKnown 
+          ? `The agent was from ${mission.factionName}.`
+          : "The perpetrator remains unknown.";
+
+        // Determine victim based on mission type
+        switch (mission.missionType) {
+          case 'ASSASSINATE_COMMANDER': {
+            // Use factionId from target if available, otherwise look up army
+            victimFactionId = mission.target?.factionId;
+            if (!victimFactionId && mission.target?.armyId && allArmies) {
+              for (const army of allArmies) {
+                if (army.id === mission.target.armyId) {
+                  victimFactionId = army.factionId;
+                  break;
+                }
+              }
+            }
+            if (victimFactionId && victimFactionId !== mission.factionId) {
+              if (result.success) {
+                victimMessageBody = `${mission.target?.name || 'One of your commanders'} has been assassinated in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              } else if (result.agentFate === 'dead') {
+                victimMessageBody = `We have killed a would-be assassin in [${mission.regionCode}] ${mission.regionName} targeting ${mission.target?.name || 'one of your commanders'}. ${attackerInfo}`;
+              } else if (result.agentFate === 'revealed') {
+                victimMessageBody = `We have uncovered an assassination plot in [${mission.regionCode}] ${mission.regionName} targeting ${mission.target?.name || 'one of your commanders'}. ${attackerInfo}`;
+              }
+            }
+            break;
+          }
+          
+          case 'ASSASSINATE_LEADER': {
+            // Use factionId from target if available
+            victimFactionId = mission.target?.factionId;
+            // Fallback: find the target character to get their faction
+            if (!victimFactionId && mission.target?.id && allCharacters) {
+              const targetChar = allCharacters.find(c => c.id === mission.target.id);
+              victimFactionId = targetChar?.factionId;
+            }
+            // Final fallback: region owner
+            if (!victimFactionId) {
+              const targetRegion = allRegions.find(r => r.code === mission.regionCode);
+              victimFactionId = targetRegion?.owner;
+            }
+            if (victimFactionId && victimFactionId !== mission.factionId) {
+              if (result.success) {
+                victimMessageBody = `${mission.target?.name || 'One of your leaders'} has been assassinated in your capital. ${attackerInfo}`;
+              } else if (result.agentFate === 'dead') {
+                victimMessageBody = `We have killed a would-be assassin in [${mission.regionCode}] ${mission.regionName} targeting ${mission.target?.name || 'one of your leaders'}. ${attackerInfo}`;
+              } else if (result.agentFate === 'revealed') {
+                victimMessageBody = `We have uncovered an assassination plot in [${mission.regionCode}] ${mission.regionName} targeting ${mission.target?.name || 'one of your leaders'}. ${attackerInfo}`;
+              }
+            }
+            break;
+          }
+          
+          case 'CAUSE_RIOTS': {
+            // Victim is the region owner
+            const targetRegion = allRegions.find(r => r.code === mission.regionCode);
+            victimFactionId = targetRegion?.owner;
+            if (victimFactionId && victimFactionId !== mission.factionId) {
+              if (result.success) {
+                victimMessageBody = `Riots have broken out in [${mission.regionCode}] ${mission.regionName}, destroying infrastructure. ${attackerInfo}`;
+              } else if (result.agentFate === 'dead') {
+                victimMessageBody = `We have killed an agitator attempting to incite riots in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              } else if (result.agentFate === 'revealed') {
+                victimMessageBody = `We have uncovered a plot to incite riots in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              }
+            }
+            break;
+          }
+          
+          case 'STIR_REBELLION': {
+            // Victim is the region owner
+            const targetRegion = allRegions.find(r => r.code === mission.regionCode);
+            victimFactionId = targetRegion?.owner;
+            if (victimFactionId && victimFactionId !== mission.factionId) {
+              if (result.success) {
+                victimMessageBody = `A rebellion has erupted in [${mission.regionCode}] ${mission.regionName}! The region is now under siege by rebel forces. ${attackerInfo}`;
+              } else if (result.agentFate === 'dead') {
+                victimMessageBody = `We have killed an agitator attempting to stir rebellion in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              } else if (result.agentFate === 'revealed') {
+                victimMessageBody = `We have uncovered a plot to incite rebellion in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              }
+            }
+            break;
+          }
+          
+          case 'KILL_AGENT': {
+            // Use factionId from target if available
+            victimFactionId = mission.target?.factionId;
+            // Fallback: find the target agent
+            if (!victimFactionId) {
+              const targetAgent = allAgents?.find(a => a.id === mission.target?.id);
+              victimFactionId = targetAgent?.factionId;
+            }
+            if (victimFactionId && victimFactionId !== mission.factionId) {
+              if (result.success) {
+                victimMessageBody = `Your agent ${mission.target?.name || 'Unknown'} has been killed in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              } else if (result.agentFate === 'dead') {
+                victimMessageBody = `We have killed an enemy enforcer hunting our agents in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              } else if (result.agentFate === 'revealed') {
+                victimMessageBody = `We have discovered an enemy enforcer hunting our agents in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              }
+            }
+            break;
+          }
+          
+          case 'SPY_REGION': {
+            // Victim is the region owner - only notify if agent caught
+            const targetRegion = allRegions.find(r => r.code === mission.regionCode);
+            victimFactionId = targetRegion?.owner;
+            if (victimFactionId && victimFactionId !== mission.factionId) {
+              if (result.agentFate === 'dead') {
+                victimMessageBody = `We have killed a spy gathering intelligence in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              } else if (result.agentFate === 'revealed') {
+                victimMessageBody = `We have discovered a spy gathering intelligence in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              }
+            }
+            break;
+          }
+          
+          case 'SPY_ARMY': {
+            // Use factionId from target if available
+            victimFactionId = mission.target?.factionId;
+            // Fallback: find the army
+            if (!victimFactionId && mission.target?.id && allArmies) {
+              const targetArmy = allArmies.find(a => a.id === mission.target.id);
+              victimFactionId = targetArmy?.factionId;
+            }
+            if (victimFactionId && victimFactionId !== mission.factionId) {
+              if (result.agentFate === 'dead') {
+                victimMessageBody = `We have killed a spy gathering intelligence on our army in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              } else if (result.agentFate === 'revealed') {
+                victimMessageBody = `We have discovered a spy gathering intelligence on our army in [${mission.regionCode}] ${mission.regionName}. ${attackerInfo}`;
+              }
+            }
+            break;
+          }
+        }
+
+        // Send victim notification if we have a valid victim and message
+        if (victimFactionId && victimMessageBody) {
+          await addDoc(collection(db, "messages"), {
+            fromFactionId: 0,
+            fromFactionName: "Intelligence Service",
+            toFactionId: victimFactionId,
+            toType: "faction",
+            body: victimMessageBody,
+            createdAt: new Date(),
+            read: false,
+            type: "mission",
+            success: !result.success, // From victim's perspective: catching a spy is good, being attacked is bad
+            missionId: mission.id,
+          });
+        }
+      }
+
     } catch (error) {
       console.error("Error executing mission:", error);
     } finally {
@@ -405,7 +576,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
                 marginBottom: "12px",
                 color: "#f97316",
               }}>
-                [EYE]  Agent {lastRollResult.agentName} has been revealed!
+                👁  Agent {lastRollResult.agentName} has been revealed!
               </div>
             )}
 
@@ -796,7 +967,7 @@ export default function GMMissionPanel({ factionNames, allRegions, allAgents }) 
                     )}
                     {mission.result?.agentFate === 'revealed' && (
                       <div style={{ fontSize: "12px", color: "#f97316", marginTop: "4px" }}>
-                        [EYE]  Agent {mission.agentName} was revealed
+                        👁  Agent {mission.agentName} was revealed
                       </div>
                     )}
                     

@@ -547,7 +547,7 @@ export default function RegionDetails() {
   return (
     <div className="container">
       <button onClick={() => navigate(-1)} style={{ marginBottom: "10px" }}>
-        ← Back
+        ← Back
       </button>
 
       <h1 style={{ marginBottom: "10px" }}>{region.name}</h1>
@@ -569,7 +569,7 @@ export default function RegionDetails() {
             <h3>Buildings Economy</h3>
             <p>Gold/turn: <strong>{buildingsGold}</strong></p>
             <p
-              title="If you end the turn with negative manpower, you must shut off manpower-consuming buildings until this is â‰¥ 0."
+              title="If you end the turn with negative manpower, you must shut off manpower-consuming buildings until this is ≥ 0."
             >
               Manpower/turn:{" "}
               <strong

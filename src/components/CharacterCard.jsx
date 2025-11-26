@@ -11,6 +11,7 @@ export default function CharacterCard({
   isGM,
   patronDeity,
   courtBonuses,
+  armies = [],
   onUpdateField,
   onDelete,
 }) {
@@ -126,14 +127,14 @@ export default function CharacterCard({
                 className="small"
                 style={{ margin: 0, padding: "6px 12px" }}
               >
-                ✔
+                âœ”
               </button>
               <button
                 onClick={handleCancelEdit}
                 className="small"
                 style={{ margin: 0, padding: "6px 12px" }}
               >
-                ✕
+                âœ•
               </button>
             </div>
           ) : (
@@ -197,7 +198,7 @@ export default function CharacterCard({
             color: "#FFD700",
             textAlign: "center"
           }}>
-            ⚔️ Wielder of Mercy ⚔️
+            âš”ï¸ Wielder of Mercy âš”ï¸
           </div>
         )}
 
@@ -307,6 +308,40 @@ export default function CharacterCard({
             {courtPosition ? courtPosition.position : character.courtPosition || "None"}
           </span>
         </div>
+
+        {/* Location */}
+        {(() => {
+          // Check if character is commanding an army
+          const commandingArmy = armies.find(a => 
+            !a.deleted && a.commanders?.includes(character.id)
+          );
+          const effectiveLocation = commandingArmy 
+            ? commandingArmy.location 
+            : character.location;
+          
+          return (
+            <div
+              style={{
+                padding: "6px 10px",
+                background: "#1a1410",
+                borderRadius: 6,
+                border: "1px solid #3a2f24",
+                fontSize: 13,
+                marginTop: 6,
+              }}
+            >
+              <span style={{ color: "#a89a7a" }}>Location: </span>
+              <span style={{ color: commandingArmy ? "#7db5d1" : "#c7bca5" }}>
+                {effectiveLocation ? `[${effectiveLocation}]` : "Unknown"}
+                {commandingArmy && (
+                  <span style={{ fontSize: 11, marginLeft: 6, color: "#a89a7a" }}>
+                    (with {commandingArmy.name || "army"})
+                  </span>
+                )}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* Show deity influence if there's a bonus */}
         {deity && (stats.some(s => s.bonus > 0 && s.key !== "prowess") || 

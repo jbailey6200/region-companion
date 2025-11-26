@@ -9,7 +9,7 @@ import { DEITIES } from "../config/religionRules";
 
 const SETTLEMENTS = ["Village", "Town", "City"];
 
-export default function RegionCard({ region, eco, role, myFactionId, patronDeity }) {
+export default function RegionCard({ region, eco, role, myFactionId, patronDeity, capital, onSetCapital }) {
   const [expanded, setExpanded] = useState(false);
   const [notes, setNotes] = useState(region.notes || "");
   const [regionName, setRegionName] = useState(region.name || "");
@@ -180,7 +180,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
       requirements.reasons.push(`Cost: ${BUILDING_RULES.City.buildCost}g (upgrade)`);
     }
 
-    requirements.tooltip = requirements.reasons.join("  ·  ");
+    requirements.tooltip = requirements.reasons.join(" · ");
     return requirements;
   }
 
@@ -427,7 +427,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
   if (mine2Count) summaryParts.push(`${mine2Count} Mine2`);
   if (hasKeep) summaryParts.push("Keep");
   if (hasCastle) summaryParts.push("Castle");
-  const summaryText = summaryParts.length ? summaryParts.join("  ·  ") : "No buildings";
+  const summaryText = summaryParts.length ? summaryParts.join(" · ") : "No buildings";
 
   const villageReqs = getSettlementRequirements("Village");
   const townReqs = getSettlementRequirements("Town");
@@ -461,7 +461,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
           alignItems: "center",
           fontWeight: "bold"
         }}>
-          <span>🏰 UNDER SIEGE - All production disabled</span>
+          <span>UNDER SIEGE - All production disabled</span>
           {isGM && (
             <button
               onClick={(e) => { e.stopPropagation(); toggleSiege(); }}
@@ -506,6 +506,9 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
               }}
             >
               {region.code || region.name}
+              {capital === region.code && (
+                <span style={{ marginLeft: "6px", color: "#FFD700" }} title="Capital">★</span>
+              )}
             </span>
             
             {isEditingName ? (
@@ -609,12 +612,12 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                 }}
                 title="Put region under siege"
               >
-                🏰 Siege
+                Siege
               </button>
             )}
           </div>
           <p style={{ margin: 0, fontSize: "14px" }}>
-            <strong>Owner:</strong> {getFactionName(region.owner)}  ·  <strong>Settlement:</strong> {settlement}
+            <strong>Owner:</strong> {getFactionName(region.owner)} · <strong>Settlement:</strong> {settlement}
           </p>
           {!expanded && (
             <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#aaa" }}>
@@ -703,6 +706,25 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
               Building disabled during siege
             </span>
           )}
+
+          {/* Set as Capital button - only show if no capital set */}
+          {isOwner && !capital && onSetCapital && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onSetCapital(region.code); }}
+              className="small"
+              style={{
+                margin: "0 4px",
+                padding: "4px 10px",
+                minHeight: "28px",
+                background: "#3a3020",
+                borderColor: "#5e4934",
+                color: "#FFD700",
+              }}
+              title="Set this region as your capital (permanent)"
+            >
+              ★ Set as Capital
+            </button>
+          )}
           
           <button
             type="button"
@@ -784,7 +806,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                       minHeight: "28px" 
                     }}
                   >
-                    {underSiege ? "🏳️ Lift Siege" : "🏰 Place Under Siege"}
+                    {underSiege ? "Lift Siege" : " Place Under Siege"}
                   </button>
                   <button
                     onClick={deleteRegion}
