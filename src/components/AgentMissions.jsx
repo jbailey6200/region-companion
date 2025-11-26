@@ -304,7 +304,7 @@ export default function AgentMissions({
       {pendingMissions.length > 0 && (
         <div style={{ marginBottom: "24px" }}>
           <h3 style={{ fontSize: "16px", marginBottom: "12px", color: "#fbbf24" }}>
-            â³ Pending Missions ({pendingMissions.length})
+            ⚠️ Pending Missions ({pendingMissions.length})
           </h3>
           {pendingMissions.map(mission => (
             <div
@@ -320,7 +320,7 @@ export default function AgentMissions({
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <strong>{mission.agentName}</strong>
-                  <span style={{ color: "#a89a7a", margin: "0 8px" }}>â†’</span>
+                  <span style={{ color: "#a89a7a", margin: "0 8px" }}> </span>
                   <span style={{ color: "#d1b26b" }}>{mission.missionName}</span>
                   <span style={{ color: "#a89a7a", margin: "0 8px" }}>in</span>
                   <span>[{mission.regionCode}] {mission.regionName}</span>
@@ -332,7 +332,7 @@ export default function AgentMissions({
                   fontSize: "12px",
                   color: mission.status === 'approved' ? "#4ade80" : "#fbbf24",
                 }}>
-                  {mission.status === 'approved' ? 'âœ“ Ready to Roll' : 'â³ Awaiting Approval'}
+                  {mission.status === 'approved' ? 'Ready to Roll' : 'Awaiting Approval'}
                 </span>
               </div>
               {mission.target && (
@@ -601,7 +601,7 @@ export default function AgentMissions({
       {completedMissions.length > 0 && (
         <div>
           <h3 style={{ fontSize: "16px", marginBottom: "12px" }}>
-            ðŸ“œ Mission History
+            📜 Mission History
           </h3>
           {completedMissions.map(mission => {
             const outcomeStyle = OUTCOME_STYLES[mission.result?.outcome] || {};
