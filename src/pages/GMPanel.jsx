@@ -32,6 +32,14 @@ import { BUILDING_RULES, HSG_UNITS, LEVY_UPKEEP_PER_UNIT } from "../config/build
 import { DEITIES } from "../config/religionRules";
 import { TERRAIN_TYPES, getTerrainFromMapPosition } from "../config/terrainRules";
 import { getCourtBonuses, COURT_POSITIONS } from "../config/courtPositions";
+import { 
+  RANDOM_EVENTS, 
+  EVENT_CATEGORIES, 
+  getRandomEvent, 
+  getRandomEventByCategory,
+  getRandomEventsForFactions,
+  formatEventMessage 
+} from "../config/randomEvents";
 
 // Faction Summary Card Component
 function FactionCard({ factionId, factionData, regions, armies, agents, courtPositions, onNavigate }) {
@@ -400,6 +408,391 @@ function NeutralForces({ armies, characters, courtPositions, regions, onNavigate
   );
 }
 
+// Random Events Panel Component
+function RandomEventsPanel({ factionNames, onSendEvent }) {
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [previewEvents, setPreviewEvents] = useState({});
+  const [isSending, setIsSending] = useState(false);
+  const [lastSentResults, setLastSentResults] = useState(null);
+
+  // Get faction IDs (1-8)
+  const factionIds = [1, 2, 3, 4, 5, 6, 7, 8];
+
+  // Generate random events for all factions (weighted)
+  function generateRandomEvents() {
+    let newEvents = {};
+    
+    if (selectedCategory) {
+      // Filter by category
+      factionIds.forEach((fId) => {
+        newEvents[fId] = getRandomEventByCategory(selectedCategory);
+      });
+    } else {
+      // Use the faction-aware generator that handles terrain exclusivity
+      newEvents = getRandomEventsForFactions(factionIds);
+    }
+    
+    setPreviewEvents(newEvents);
+    setLastSentResults(null);
+  }
+
+  // Regenerate event for a single faction
+  function regenerateForFaction(factionId) {
+    const newEvent = selectedCategory 
+      ? getRandomEventByCategory(selectedCategory)
+      : getRandomEvent();
+    setPreviewEvents((prev) => ({
+      ...prev,
+      [factionId]: newEvent,
+    }));
+  }
+
+  // Send all events to players
+  async function sendAllEvents() {
+    if (Object.keys(previewEvents).length === 0) return;
+
+    setIsSending(true);
+    const results = [];
+    
+    // Collect events that need to be revealed to all
+    const revealToAllEvents = [];
+
+    for (const factionId of factionIds) {
+      const event = previewEvents[factionId];
+      if (event) {
+        try {
+          await onSendEvent({
+            to: factionId,
+            body: formatEventMessage(event),
+            type: "event",
+          });
+          results.push({ factionId, success: true, event });
+          
+          if (event.revealToAll) {
+            revealToAllEvents.push({ factionId, event });
+          }
+        } catch (error) {
+          results.push({ factionId, success: false, error });
+        }
+      }
+    }
+    
+    // Send reveal notifications to all other factions for revealToAll events
+    for (const { factionId: sourceFactionId, event } of revealToAllEvents) {
+      const sourceFactionName = factionNames[sourceFactionId] || `Faction ${sourceFactionId}`;
+      for (const targetFactionId of factionIds) {
+        if (targetFactionId !== sourceFactionId) {
+          try {
+            await onSendEvent({
+              to: targetFactionId,
+              body: `📢 **Public Announcement**\n\n*${event.icon} ${event.name} has occurred!*\n\n*${event.message}*\n\n*This event affects all realms.*`,
+              type: "event",
+            });
+          } catch (error) {
+            console.error(`Failed to send reveal notification to faction ${targetFactionId}`, error);
+          }
+        }
+      }
+    }
+
+    setIsSending(false);
+    setLastSentResults(results);
+    setPreviewEvents({});
+  }
+
+  return (
+    <div>
+      <h2>🎲 Push Random Events</h2>
+      <p style={{ color: "#a89a7a", marginBottom: "20px" }}>
+        Generate and send random events to all players. Each player receives a different random event.
+      </p>
+
+      {/* Category Filter */}
+      <div
+        className="card"
+        style={{ padding: "16px", marginBottom: "20px" }}
+      >
+        <h3 style={{ marginTop: 0 }}>Event Category (Optional)</h3>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <button
+            onClick={() => setSelectedCategory(null)}
+            style={{
+              padding: "8px 16px",
+              background: selectedCategory === null ? "#3a3020" : "#241b15",
+              border: selectedCategory === null ? "2px solid #d1b26b" : "1px solid #5e4934",
+            }}
+          >
+            All Categories
+          </button>
+          {Object.entries(EVENT_CATEGORIES).map(([key, cat]) => (
+            <button
+              key={key}
+              onClick={() => setSelectedCategory(key)}
+              style={{
+                padding: "8px 16px",
+                background: selectedCategory === key ? "#3a3020" : "#241b15",
+                border: selectedCategory === key ? `2px solid ${cat.color}` : "1px solid #5e4934",
+                color: selectedCategory === key ? cat.color : undefined,
+              }}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Generate Button */}
+      <div style={{ marginBottom: "20px" }}>
+        <button
+          onClick={generateRandomEvents}
+          className="green"
+          style={{ padding: "12px 24px", fontSize: "16px" }}
+        >
+          🎲 Generate Random Events for All Factions
+        </button>
+      </div>
+
+      {/* Preview Events */}
+      {Object.keys(previewEvents).length > 0 && (
+        <div className="card" style={{ padding: "16px", marginBottom: "20px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "16px",
+            }}
+          >
+            <h3 style={{ margin: 0 }}>Preview Events</h3>
+            <button
+              onClick={sendAllEvents}
+              disabled={isSending}
+              className="green"
+              style={{ padding: "10px 20px" }}
+            >
+              {isSending ? "Sending..." : "📤 Send All Events to Players"}
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+              gap: "12px",
+            }}
+          >
+            {factionIds.map((fId) => {
+              const event = previewEvents[fId];
+              if (!event) return null;
+              const catInfo = EVENT_CATEGORIES[event.category];
+
+              return (
+                <div
+                  key={fId}
+                  style={{
+                    padding: "12px",
+                    background: "#1a1410",
+                    border: "1px solid #4c3b2a",
+                    borderRadius: "4px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <strong>{factionNames[fId] || `Faction ${fId}`}</strong>
+                    <button
+                      onClick={() => regenerateForFaction(fId)}
+                      style={{
+                        padding: "4px 8px",
+                        fontSize: "12px",
+                        background: "#2a2015",
+                      }}
+                    >
+                      🔄 Reroll
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    <span style={{ fontSize: "20px" }}>{event.icon}</span>
+                    <span style={{ fontWeight: "bold", color: catInfo?.color }}>
+                      {event.name}
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      padding: "2px 6px",
+                      background: catInfo?.color + "33",
+                      color: catInfo?.color,
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {catInfo?.name}
+                  </span>
+                  {event.revealToAll && (
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        padding: "2px 6px",
+                        background: "#ff6b6b33",
+                        color: "#ff6b6b",
+                        borderRadius: "4px",
+                        marginLeft: "4px",
+                      }}
+                    >
+                      ⚠️ Revealed to All
+                    </span>
+                  )}
+                  <p style={{ fontSize: "13px", color: "#c9b896", margin: "8px 0 0 0" }}>
+                    {event.message}
+                  </p>
+                  {/* Effect display */}
+                  <div
+                    style={{
+                      marginTop: "8px",
+                      padding: "6px",
+                      background: "#0a0a08",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                      color: "#a89a7a",
+                    }}
+                  >
+                    <strong>Effect: </strong>
+                    {event.effect.type === "gold" && (
+                      <span style={{ color: event.effect.value > 0 ? "#b5e8a1" : "#ff6b6b" }}>
+                        {event.effect.value > 0 ? "+" : ""}{event.effect.value} gold
+                      </span>
+                    )}
+                    {event.effect.type === "stat_change" && (
+                      <span style={{ color: event.effect.value > 0 ? "#b5e8a1" : "#ff6b6b" }}>
+                        {event.effect.value > 0 ? "+" : ""}{event.effect.value} {event.effect.stat}
+                      </span>
+                    )}
+                    {event.effect.type === "new_character" && (
+                      <span style={{ color: "#b5e8a1" }}>
+                        Create {event.effect.value} new character{event.effect.value > 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {event.effect.type === "kill_character" && (
+                      <span style={{ color: "#ff6b6b" }}>Random character dies</span>
+                    )}
+                    {event.effect.type === "destroy_building" && (
+                      <span style={{ color: "#ff6b6b" }}>
+                        Destroy 1 {event.effect.value.join(" or ")}
+                      </span>
+                    )}
+                    {event.effect.type === "free_upgrade" && (
+                      <span style={{ color: "#b5e8a1" }}>Free Farm Level 2 upgrade</span>
+                    )}
+                    {event.effect.type === "gain_region" && (
+                      <span style={{ color: "#b5e8a1" }}>Gain adjacent uncontrolled region</span>
+                    )}
+                    {event.effect.type === "spawn_army" && (
+                      <span style={{ color: "#ff6b6b" }}>GM spawns hostile forces</span>
+                    )}
+                    {event.effect.type === "terrain_modifier" && (
+                      <span style={{ color: "#3498db" }}>
+                        {event.effect.value === "rivers_crossable" 
+                          ? "Rivers crossable this turn" 
+                          : "Bridges impassable this turn"}
+                      </span>
+                    )}
+                    {event.effect.type === "none" && (
+                      <span style={{ color: "#666" }}>No mechanical effect</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Last Sent Results */}
+      {lastSentResults && (
+        <div
+          className="card"
+          style={{
+            padding: "16px",
+            background: "#1a2a1a",
+            border: "1px solid #2a4a2a",
+          }}
+        >
+          <h3 style={{ margin: "0 0 12px 0", color: "#b5e8a1" }}>
+            ✅ Events Sent Successfully!
+          </h3>
+          <div style={{ fontSize: "13px" }}>
+            {lastSentResults.map((result) => (
+              <div key={result.factionId} style={{ marginBottom: "4px" }}>
+                <strong>{factionNames[result.factionId] || `Faction ${result.factionId}`}</strong>
+                {" → "}
+                {result.success ? (
+                  <span style={{ color: "#b5e8a1" }}>
+                    {result.event.icon} {result.event.name}
+                  </span>
+                ) : (
+                  <span style={{ color: "#ff4444" }}>Failed to send</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Event Reference */}
+      <details style={{ marginTop: "24px" }}>
+        <summary style={{ cursor: "pointer", color: "#a89a7a", marginBottom: "12px" }}>
+          📚 View All Available Events ({RANDOM_EVENTS.length} total)
+        </summary>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gap: "8px",
+            marginTop: "12px",
+          }}
+        >
+          {RANDOM_EVENTS.map((event) => {
+            const catInfo = EVENT_CATEGORIES[event.category];
+            return (
+              <div
+                key={event.id}
+                style={{
+                  padding: "8px",
+                  background: "#1a1410",
+                  border: "1px solid #3c2b1a",
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>{event.icon}</span>
+                    <strong style={{ color: catInfo?.color }}>{event.name}</strong>
+                  </div>
+                  <span style={{ color: "#666", fontSize: "10px" }}>{event.weight}%</span>
+                </div>
+                <p style={{ margin: "4px 0 0 0", color: "#a89a7a" }}>{event.message}</p>
+              </div>
+            );
+          })}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 // Main GM Panel Component
 export default function GMPanel() {
   const navigate = useNavigate();
@@ -587,7 +980,7 @@ export default function GMPanel() {
   }, []);
 
   // GM message functions
-  async function sendGmMessage({ to, body }) {
+  async function sendGmMessage({ to, body, type = "gm" }) {
     try {
       await addDoc(collection(db, "messages"), {
         fromFactionId: 0,
@@ -597,7 +990,7 @@ export default function GMPanel() {
         body: body,
         createdAt: new Date(),
         read: false,
-        type: "gm",
+        type: type,
       });
     } catch (error) {
       console.error("Error sending GM message:", error);
@@ -651,6 +1044,7 @@ export default function GMPanel() {
     { id: "regions", label: "Regions" },
     { id: "neutral", label: "Neutral Forces" },
     { id: "missions", label: "Missions" },
+    { id: "events", label: "Push Events" },
     { id: "court", label: "Court" },
     {
       id: "mailbox",
@@ -868,6 +1262,14 @@ export default function GMPanel() {
           allRegions={regions}
           allCharacters={allCharacters}
           factionNames={factionNames}
+        />
+      )}
+
+      {/* EVENTS TAB */}
+      {activeTab === "events" && (
+        <RandomEventsPanel
+          factionNames={factionNames}
+          onSendEvent={sendGmMessage}
         />
       )}
 

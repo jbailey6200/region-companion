@@ -62,7 +62,7 @@ export function ComposeModal({
         }}
       >
         <h3 style={{ marginTop: 0 }}>
-          {isGM ? "📜 Send Royal Decree" : "✉️ Compose Message"}
+          {isGM ? "ðŸ“œ Send Royal Decree" : "âœ‰ï¸ Compose Message"}
         </h3>
 
         <div style={{ marginBottom: "16px" }}>
@@ -156,7 +156,7 @@ export function ComposeModal({
 /**
  * Message List Component
  */
-export function MessageList({ messages, onSelect, onMarkRead, emptyIcon = "📭", emptyText = "No messages." }) {
+export function MessageList({ messages, onSelect, onMarkRead, emptyIcon = "ðŸ“­", emptyText = "No messages." }) {
   if (messages.length === 0) {
     return (
       <div
@@ -210,7 +210,7 @@ export function MessageList({ messages, onSelect, onMarkRead, emptyIcon = "📭"
                   marginBottom: "4px",
                 }}
               >
-                {msg.type === "mission" ? "📋 Mission Report" : "✉️ Message"}:{" "}
+                {msg.type === "mission" ? "ðŸ“‹ Mission Report" : "Message"}:{" "}
                 From {msg.fromFactionName || "Unknown"}
               </div>
               <div style={{ fontSize: "12px", color: "#a89a7a" }}>
@@ -243,6 +243,41 @@ export function MessageList({ messages, onSelect, onMarkRead, emptyIcon = "📭"
  */
 export function MessageDetailModal({ message, onClose, onDelete, isGM = false }) {
   if (!message) return null;
+
+  // Helper to render event message body with formatting
+  function renderEventBody(body) {
+    return body.split('\n').map((line, i) => {
+      // Check if line contains **text** for bold (event name)
+      if (line.includes('**')) {
+        const parts = line.split('**');
+        return (
+          <p key={i} style={{ margin: i === 0 ? 0 : "8px 0 0 0", color: "#f4efe4" }}>
+            {parts.map((part, j) => 
+              j % 2 === 1 ? <strong key={j} style={{ color: "#d1b26b" }}>{part}</strong> : part
+            )}
+          </p>
+        );
+      }
+      // Check if line is wrapped in *text* for italics
+      if (line.startsWith('*') && line.endsWith('*') && !line.startsWith('**')) {
+        return (
+          <p key={i} style={{ margin: "8px 0 0 0", fontStyle: "italic", color: "#c9b896" }}>
+            {line.slice(1, -1)}
+          </p>
+        );
+      }
+      // Empty lines become spacing
+      if (line.trim() === '') {
+        return <div key={i} style={{ height: "8px" }} />;
+      }
+      // Regular text
+      return (
+        <p key={i} style={{ margin: "8px 0 0 0", color: "#f4efe4" }}>
+          {line}
+        </p>
+      );
+    });
+  }
 
   return (
     <div
@@ -281,12 +316,14 @@ export function MessageDetailModal({ message, onClose, onDelete, isGM = false })
         >
           <div>
             <h3 style={{ margin: 0 }}>
-              {message.type === "mission" ? "📋 Mission Report" : "✉️ Royal Message"}
+              {message.type === "mission" ? "📋 Mission Report" : message.type === "event" ? "🎲 Event" : "✉️ Royal Message"}
             </h3>
-            <div style={{ fontSize: "12px", color: "#a89a7a", marginTop: "4px" }}>
-              From: {message.fromFactionName || "System"} •{" "}
-              {message.createdAt?.toDate?.().toLocaleDateString()}
-            </div>
+            {message.type !== "event" && (
+              <div style={{ fontSize: "12px", color: "#a89a7a", marginTop: "4px" }}>
+                From: {message.fromFactionName || "System"} •{" "}
+                {message.createdAt?.toDate?.().toLocaleDateString()}
+              </div>
+            )}
           </div>
         </div>
 
@@ -299,7 +336,9 @@ export function MessageDetailModal({ message, onClose, onDelete, isGM = false })
             marginBottom: "16px",
           }}
         >
-          {message.type === "mission" ? (
+          {message.type === "event" ? (
+            <div>{renderEventBody(message.body)}</div>
+          ) : message.type === "mission" ? (
             <div>
               <div
                 style={{
@@ -421,7 +460,7 @@ export function Mailbox({
             )}
           </h3>
           <button className="green" onClick={() => setComposeOpen(true)}>
-            {isGM ? "📜 Send Decree" : "✉️ Compose"}
+            {isGM ? " Send Decree" : "Compose"}
           </button>
         </div>
       )}
@@ -431,7 +470,7 @@ export function Mailbox({
         messages={messages}
         onSelect={setSelectedMessage}
         onMarkRead={onMarkRead}
-        emptyIcon={isGM ? "📭" : "📪"}
+        emptyIcon={isGM ? "“­" : ""}
         emptyText={isGM ? "No messages from players yet." : "Your mailbox is empty."}
       />
 

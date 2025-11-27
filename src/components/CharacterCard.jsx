@@ -198,7 +198,7 @@ export default function CharacterCard({
             color: "#FFD700",
             textAlign: "center"
           }}>
-            âš”ï¸ Wielder of Mercy âš”ï¸
+            Wielder of Mercy
           </div>
         )}
 
