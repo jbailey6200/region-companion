@@ -22,11 +22,11 @@ export const DEITIES = {
     type: "adiri",
     bonuses: {
       characterProwess: 1,
-      huscarlUpkeep: 0.5, // instead of 1
+      huscarlUpkeep: 1, // instead of 2
     },
     description: [
       "+1 Prowess to characters",
-      "Huscarls cost 0.5g upkeep"
+      "Huscarls cost 1g upkeep"
     ]
   },
   pynthar: {

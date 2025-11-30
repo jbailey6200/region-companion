@@ -97,7 +97,7 @@ function FactionCard({ factionId, factionData, regions, armies, agents, courtPos
             onNavigate(`/faction/${factionId}`);
           }}
         >
-          View →
+          View
         </button>
       </div>
 
@@ -291,9 +291,14 @@ function NeutralForces({ armies, characters, courtPositions, regions, onNavigate
   }
 
   async function updateArmyCommanders(armyId, commanderIds) {
-    await updateDoc(doc(db, "factions", "neutral", "armies", armyId), {
-      commanders: commanderIds,
-    });
+    try {
+      await updateDoc(doc(db, "factions", "neutral", "armies", armyId), {
+        commanders: commanderIds,
+      });
+    } catch (error) {
+      console.error("Error updating commanders:", error);
+      alert("Failed to save commanders. Please try again.");
+    }
   }
 
   const activeArmies = armies.filter((a) => !a.deleted);
@@ -485,7 +490,7 @@ function RandomEventsPanel({ factionNames, onSendEvent }) {
           try {
             await onSendEvent({
               to: targetFactionId,
-              body: `📢 **Public Announcement**\n\n*${event.icon} ${event.name} has occurred!*\n\n*${event.message}*\n\n*This event affects all realms.*`,
+              body: ` **Public Announcement**\n\n*${event.icon} ${event.name} has occurred!*\n\n*${event.message}*\n\n*This event affects all realms.*`,
               type: "event",
             });
           } catch (error) {
@@ -502,7 +507,7 @@ function RandomEventsPanel({ factionNames, onSendEvent }) {
 
   return (
     <div>
-      <h2>🎲 Push Random Events</h2>
+      <h2>[DICE] Push Random Events</h2>
       <p style={{ color: "#a89a7a", marginBottom: "20px" }}>
         Generate and send random events to all players. Each player receives a different random event.
       </p>
@@ -548,7 +553,7 @@ function RandomEventsPanel({ factionNames, onSendEvent }) {
           className="green"
           style={{ padding: "12px 24px", fontSize: "16px" }}
         >
-          🎲 Generate Random Events for All Factions
+          [DICE] Generate Random Events for All Factions
         </button>
       </div>
 
@@ -570,7 +575,7 @@ function RandomEventsPanel({ factionNames, onSendEvent }) {
               className="green"
               style={{ padding: "10px 20px" }}
             >
-              {isSending ? "Sending..." : "📤 Send All Events to Players"}
+              {isSending ? "Sending..." : " Send All Events to Players"}
             </button>
           </div>
 
@@ -613,7 +618,7 @@ function RandomEventsPanel({ factionNames, onSendEvent }) {
                         background: "#2a2015",
                       }}
                     >
-                      🔄 Reroll
+                      Reroll
                     </button>
                   </div>
                   <div
@@ -651,7 +656,7 @@ function RandomEventsPanel({ factionNames, onSendEvent }) {
                         marginLeft: "4px",
                       }}
                     >
-                      ⚠️ Revealed to All
+                      [!] Revealed to All
                     </span>
                   )}
                   <p style={{ fontSize: "13px", color: "#c9b896", margin: "8px 0 0 0" }}>
@@ -730,13 +735,13 @@ function RandomEventsPanel({ factionNames, onSendEvent }) {
           }}
         >
           <h3 style={{ margin: "0 0 12px 0", color: "#b5e8a1" }}>
-            ✅ Events Sent Successfully!
+            âœ… Events Sent Successfully!
           </h3>
           <div style={{ fontSize: "13px" }}>
             {lastSentResults.map((result) => (
               <div key={result.factionId} style={{ marginBottom: "4px" }}>
                 <strong>{factionNames[result.factionId] || `Faction ${result.factionId}`}</strong>
-                {" → "}
+                {" â†’ "}
                 {result.success ? (
                   <span style={{ color: "#b5e8a1" }}>
                     {result.event.icon} {result.event.name}
@@ -753,7 +758,7 @@ function RandomEventsPanel({ factionNames, onSendEvent }) {
       {/* Event Reference */}
       <details style={{ marginTop: "24px" }}>
         <summary style={{ cursor: "pointer", color: "#a89a7a", marginBottom: "12px" }}>
-          📚 View All Available Events ({RANDOM_EVENTS.length} total)
+           View All Available Events ({RANDOM_EVENTS.length} total)
         </summary>
         <div
           style={{
@@ -1064,7 +1069,7 @@ export default function GMPanel() {
           marginBottom: "24px",
         }}
       >
-        <h1 style={{ margin: 0 }}>⚔️ Game Master Panel</h1>
+        <h1 style={{ margin: 0 }}> Game Master Panel</h1>
         <button
           onClick={() => {
             localStorage.removeItem("role");

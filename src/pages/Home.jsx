@@ -10,7 +10,7 @@ import { collection, onSnapshot } from "firebase/firestore";
 const DEFAULT_CRESTS = {
   "1": "/faction1.png",
   "2": "/holmes.png",       
-  "3": "/faction3.png",
+  "3": "/faction3-1.png",
   "4": "/faction4.png",
   "5": "/faction5.png",
   "6": "/faction6.png",

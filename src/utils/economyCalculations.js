@@ -239,14 +239,14 @@ export function calculateUpkeeps(armies, factionData, agents, patronDeity) {
   armies.forEach((army) => {
     if (army.deleted) return;
 
-    const huscarlUp = deity?.bonuses.huscarlUpkeep ?? 1;
-    const dkUp = deity?.bonuses.dismountedKnightUpkeep ?? 2;
-    const mkUp = deity?.bonuses.mountedKnightUpkeep ?? 3;
+    const huscarlUp = deity?.bonuses.huscarlUpkeep ?? 2;
+    const dkUp = deity?.bonuses.dismountedKnightUpkeep ?? 3;
+    const mkUp = deity?.bonuses.mountedKnightUpkeep ?? 4;
 
     hsgUpkeep += (army.huscarls || 0) * huscarlUp;
     hsgUpkeep += (army.dismountedKnights || 0) * dkUp;
     hsgUpkeep += (army.mountedKnights || 0) * mkUp;
-    hsgUpkeep += (army.lightHorse || 0) * 1;
+    hsgUpkeep += (army.lightHorse || 0) * 2;
 
     levyUpkeep += ((army.levyInfantry || 0) + (army.levyArchers || 0)) * 0.25;
   });

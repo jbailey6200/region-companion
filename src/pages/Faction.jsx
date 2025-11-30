@@ -81,7 +81,7 @@ function useToasts() {
 const DEFAULT_CRESTS = {
   "1": "/faction1.png",
   "2": "/holmes.png",
-  "3": "/faction3.png",
+  "3": "/faction3-1.png",
   "4": "/faction4.png",
   "5": "/faction5.png",
   "6": "/faction6.png",
@@ -463,17 +463,22 @@ export default function Faction() {
   async function updateArmyCommanders(armyId, commanderIds) {
     if (!isOwnerView) return;
 
-    const army = armies.find((a) => a.id === armyId);
-    const oldCommanders = army?.commanders || [];
-    const removedCommanders = oldCommanders.filter((cmdId) => !commanderIds.includes(cmdId));
+    try {
+      const army = armies.find((a) => a.id === armyId);
+      const oldCommanders = army?.commanders || [];
+      const removedCommanders = oldCommanders.filter((cmdId) => !commanderIds.includes(cmdId));
 
-    const armyRef = doc(db, "factions", String(id), "armies", armyId);
-    await updateDoc(armyRef, { commanders: commanderIds });
+      const armyRef = doc(db, "factions", String(id), "armies", armyId);
+      await updateDoc(armyRef, { commanders: commanderIds });
 
-    const capital = factionData?.capital;
-    for (const cmdId of removedCommanders) {
-      const charRef = doc(db, "factions", String(id), "characters", cmdId);
-      await updateDoc(charRef, { location: capital || null });
+      const capital = factionData?.capital;
+      for (const cmdId of removedCommanders) {
+        const charRef = doc(db, "factions", String(id), "characters", cmdId);
+        await updateDoc(charRef, { location: capital || null });
+      }
+    } catch (error) {
+      console.error("Error updating commanders:", error);
+      alert("Failed to save commanders. Please try again.");
     }
   }
 
@@ -648,7 +653,7 @@ export default function Faction() {
   }, [armies]);
 
   const hsgCap = eco?.hsgCap || 0;
-  const overCap = hsgUsed > hsgCap;
+  const overCap = hsgUsed * 10 > hsgCap;
 
   // Gold calculations
   const warships = factionData?.navy?.warships || 0;
@@ -659,10 +664,10 @@ export default function Faction() {
       if (a.deleted) return sum;
       return (
         sum +
-        (a.huscarls || 0) * getModifiedUpkeep("huscarls", 1, patronDeity) +
-        (a.dismountedKnights || 0) * getModifiedUpkeep("dismountedKnights", 2, patronDeity) +
-        (a.mountedKnights || 0) * getModifiedUpkeep("mountedKnights", 3, patronDeity) +
-        (a.lightHorse || 0) * 1
+        (a.huscarls || 0) * getModifiedUpkeep("huscarls", 2, patronDeity) +
+        (a.dismountedKnights || 0) * getModifiedUpkeep("dismountedKnights", 3, patronDeity) +
+        (a.mountedKnights || 0) * getModifiedUpkeep("mountedKnights", 4, patronDeity) +
+        (a.lightHorse || 0) * 2
       );
     }, 0);
   }, [armies, patronDeity]);
@@ -774,7 +779,7 @@ export default function Faction() {
                       }}
                       title="Hide agent (remove revealed status)"
                     >
-                      ✓
+                      [OK]
                     </button>
                   )}
                 </span>
@@ -1100,7 +1105,7 @@ export default function Faction() {
             {characters.length} character{characters.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <button onClick={() => navigate("/")}>🏠 Home</button>
+        <button onClick={() => navigate("/")}>Home</button>
       </div>
 
       {/* SUMMARY CARDS */}
@@ -1174,7 +1179,7 @@ export default function Faction() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #3a2f24" }}>
             <span style={{ color: "#c7bca5" }}>HSG:</span>
             <strong style={{ color: overCap ? "#ff4444" : "#b5e8a1" }}>
-              {hsgUsed} / {hsgCap}
+              {hsgUsed * 10} / {hsgCap}
               {overCap && <span style={{ fontSize: 11, marginLeft: 4 }}>OVER!</span>}
             </strong>
           </div>
@@ -1182,7 +1187,7 @@ export default function Faction() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
               <span style={{ color: "#c7bca5" }}>Levy Infantry:</span>
               <span>
-                <strong>{totalLevyInfantryUnits}</strong>
+                <strong>{totalLevyInfantryUnits * 10}</strong>
                 <span style={{ color: "#888" }}> / {levyInfPotential}</span>
                 {deity?.bonuses.levyInfantryCF && <span style={{ fontSize: 10, color: "#b5e8a1", marginLeft: 4 }}>+1 CF</span>}
               </span>
@@ -1190,7 +1195,7 @@ export default function Faction() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <span style={{ color: "#c7bca5" }}>Levy Archers:</span>
               <span>
-                <strong>{totalLevyArcherUnits}</strong>
+                <strong>{totalLevyArcherUnits * 10}</strong>
                 <span style={{ color: "#888" }}> / {levyArchPotential}</span>
                 {deity?.bonuses.farmLevyBonus && <span style={{ fontSize: 10, color: "#b5e8a1", marginLeft: 4 }}>Altaea</span>}
               </span>
@@ -1465,10 +1470,11 @@ export default function Faction() {
               allAgents={allAgents}
               allRegions={allRegions}
               allCharacters={allCharacters}
+              allArmies={allArmies}
+              revealedEnemyAgents={allAgents.filter(a => a.revealed && a.factionId !== Number(id) && !a.deleted)}
               factionId={Number(id)}
               factionName={factionData?.name || `Faction ${id}`}
-              patronDeity={patronDeity}
-              isGM={isGM}
+              isOwner={isOwnerView}
             />
           )}
         </>

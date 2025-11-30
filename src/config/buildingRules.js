@@ -4,7 +4,7 @@ export const BUILDING_RULES = {
   Village: {
     gold: 2,
     manpower: 10,
-    manpowerCost: 4,
+    manpowerCost: 0,
     hsgCap: 10,
     levyInf: 100,
     settlement: true,
@@ -13,7 +13,7 @@ export const BUILDING_RULES = {
   Town: {
     gold: 4,
     manpower: 20,
-    manpowerCost: 8,
+    manpowerCost: 0,
     hsgCap: 30,
     levyInf: 200,
     settlement: true,
@@ -22,7 +22,7 @@ export const BUILDING_RULES = {
   City: {
     gold: 6,
     manpower: 30,
-    manpowerCost: 12,
+    manpowerCost: 0,
     hsgCap: 80,
     levyInf: 300,
     settlement: true,
@@ -40,7 +40,7 @@ export const BUILDING_RULES = {
   Farm2: {
     gold: 0,
     manpower: 0,
-    manpowerCost: 4,
+    manpowerCost: 3,
     levyArch: 40,
     farmEquivalent: 2,
     buildCost: 10, // upgrade cost
@@ -56,7 +56,7 @@ export const BUILDING_RULES = {
   Mine2: {
     gold: 3,
     manpower: 0,
-    manpowerCost: 4,
+    manpowerCost: 3,
     mineEquivalent: 2,
     buildCost: 20, // upgrade cost
   },
@@ -78,9 +78,9 @@ export const BUILDING_RULES = {
 };
 
 export const HSG_UNITS = [
-  { key: "huscarls", label: "Huscarls", upkeep: 1 },
-  { key: "dismountedKnights", label: "Dismounted Knights", upkeep: 2 },
-  { key: "mountedKnights", label: "Mounted Knights", upkeep: 3 },
+  { key: "huscarls", label: "Huscarls", upkeep: 2 },
+  { key: "dismountedKnights", label: "Dismounted Knights", upkeep: 3 },
+  { key: "mountedKnights", label: "Mounted Knights", upkeep: 4 },
   { key: "lightHorse", label: "Light Horse", upkeep: 2 },
 ];
 

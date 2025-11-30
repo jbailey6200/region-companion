@@ -105,10 +105,11 @@ export default function ArmyCard({
   // Get available characters (not already commanding OTHER armies)
   const commandersInOtherArmies = allArmies
     .filter(a => a.id !== id && !a.deleted)
-    .flatMap(a => a.commanders || []);
+    .flatMap(a => a.commanders || [])
+    .filter(Boolean); // Filter out any undefined/null values
   
   const availableCharacters = characters.filter(
-    char => !commandersInOtherArmies.includes(char.id)
+    char => char && char.id && !commandersInOtherArmies.includes(char.id)
   );
 
   // Get deity bonuses
@@ -401,9 +402,18 @@ export default function ArmyCard({
                         fontWeight: "bold",
                         marginBottom: 8,
                         color: "#d1b26b",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
                       }}
                     >
-                      Select Commanders (Max 3)
+                      <span>Select Commanders (Max 3)</span>
+                      <span style={{ 
+                        color: selectedCommanders.length > 0 ? "#b5e8a1" : "#a89a7a",
+                        fontWeight: "normal"
+                      }}>
+                        {selectedCommanders.length} selected
+                      </span>
                     </div>
                     {availableCharacters.length === 0 ? (
                       <p style={{ fontSize: 12, color: "#a89a7a", margin: 0 }}>
@@ -415,8 +425,9 @@ export default function ArmyCard({
                           {availableCharacters.map((char) => {
                             const isSelected = selectedCommanders.includes(char.id);
                             return (
-                              <label
+                              <div
                                 key={char.id}
+                                onClick={() => toggleCommander(char.id)}
                                 style={{
                                   display: "flex",
                                   alignItems: "center",
@@ -448,8 +459,8 @@ export default function ArmyCard({
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
-                                  onChange={() => toggleCommander(char.id)}
-                                  style={{ margin: 0 }}
+                                  readOnly
+                                  style={{ margin: 0, pointerEvents: "none" }}
                                 />
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontSize: 13, fontWeight: "bold" }}>
@@ -482,7 +493,7 @@ export default function ArmyCard({
                                     </span>
                                   </div>
                                 </div>
-                              </label>
+                              </div>
                             );
                           })}
                         </div>
@@ -501,11 +512,11 @@ export default function ArmyCard({
                               flex: 1,
                               margin: 0,
                               padding: "4px 8px",
-                              background: "#4a6642",
-                              borderColor: "#5a7a52",
+                              background: selectedCommanders.length > 0 ? "#4a6642" : "#3a3020",
+                              borderColor: selectedCommanders.length > 0 ? "#5a7a52" : "#5e4934",
                             }}
                           >
-                            Save
+                            Save ({selectedCommanders.length})
                           </button>
                           <button
                             className="small"

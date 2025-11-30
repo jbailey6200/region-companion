@@ -223,16 +223,26 @@ export default function RegionDetails() {
         window.alert("Already a City.");
         return;
       }
+      if (current === "None") {
+        window.alert("Must have a Village before upgrading to Town.");
+        return;
+      }
       if (!eco || eco.farmEquivalent < 4 || eco.mineEquivalent < 1) {
-        window.alert("Requires 4 Farms (eq) and 1 Mine to become a Town.");
+        window.alert(
+          `Requires 4 Farms (eq) and 1 Mine to become a Town.\n\nYour faction has: ${eco?.farmEquivalent || 0} farm eq, ${eco?.mineEquivalent || 0} mine eq`
+        );
         return;
       }
     }
 
     if (type === "City") {
+      if (current === "None") {
+        window.alert("Must have a Village or Town before upgrading to City.");
+        return;
+      }
       if (!eco || eco.farmEquivalent < 6 || eco.mineEquivalent < 2) {
         window.alert(
-          "Requires 6 Farms (eq) and 1 Mine2 (2 mine equivalents) to become a City."
+          `Requires 6 Farms (eq) and 2 Mine eq to become a City.\n\nYour faction has: ${eco?.farmEquivalent || 0} farm eq, ${eco?.mineEquivalent || 0} mine eq`
         );
         return;
       }
@@ -547,7 +557,7 @@ export default function RegionDetails() {
   return (
     <div className="container">
       <button onClick={() => navigate(-1)} style={{ marginBottom: "10px" }}>
-        ← Back
+        â† Back
       </button>
 
       <h1 style={{ marginBottom: "10px" }}>{region.name}</h1>
@@ -569,7 +579,7 @@ export default function RegionDetails() {
             <h3>Buildings Economy</h3>
             <p>Gold/turn: <strong>{buildingsGold}</strong></p>
             <p
-              title="If you end the turn with negative manpower, you must shut off manpower-consuming buildings until this is ≥ 0."
+              title="If you end the turn with negative manpower, you must shut off manpower-consuming buildings until this is â‰¥ 0."
             >
               Manpower/turn:{" "}
               <strong
