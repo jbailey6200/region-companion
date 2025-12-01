@@ -1,5 +1,4 @@
 // terrainRules.js - Terrain-based building restrictions
-// Add this file to src/config/ or src/utils/
 
 export const TERRAIN_TYPES = {
   PLAINS: "plains",
@@ -8,15 +7,32 @@ export const TERRAIN_TYPES = {
   COAST: "coast",
   RIVER: "river",
   HILLS: "hills",
+  WATER: "water",
 };
 
 // Building limits per terrain type
 export const TERRAIN_RULES = {
+  water: {
+    name: "Water",
+    color: "#2a5a7a",
+    icon: "~",
+    description: "Open ocean - not a playable region",
+    isPlayable: false,
+    maxFarms: 0,
+    maxMines: 0,
+    maxSettlements: 0,
+    canHaveKeep: false,
+    canHaveCastle: false,
+    bonuses: [],
+    penalties: ["Cannot be owned or built upon"],
+  },
+
   plains: {
     name: "Plains",
     color: "#c4b896",
     icon: "🌾",
     description: "Fertile flatlands perfect for farming and settlement",
+    isPlayable: true,
     maxFarms: 3,
     maxMines: 1,
     maxSettlements: 1,
@@ -30,6 +46,7 @@ export const TERRAIN_RULES = {
     color: "#7a6d5a",
     icon: "⛰️",
     description: "Rocky peaks rich in minerals but harsh for large settlements",
+    isPlayable: true,
     maxFarms: 1,
     maxMines: 3,
     maxSettlements: 1,
@@ -45,6 +62,7 @@ export const TERRAIN_RULES = {
     color: "#4a5d3f",
     icon: "🌲",
     description: "Dense woodlands with farmable clearings",
+    isPlayable: true,
     maxFarms: 2,
     maxMines: 1,
     maxSettlements: 1,
@@ -60,6 +78,7 @@ export const TERRAIN_RULES = {
     color: "#6b8aa3",
     icon: "🌊",
     description: "Coastal regions with access to the sea",
+    isPlayable: true,
     maxFarms: 2,
     maxMines: 0,
     maxSettlements: 1,
@@ -75,6 +94,7 @@ export const TERRAIN_RULES = {
     color: "#5a8aa8",
     icon: "〰️",
     description: "Fertile river valleys perfect for agriculture and trade",
+    isPlayable: true,
     maxFarms: 3,
     maxMines: 2,
     maxSettlements: 1,
@@ -89,6 +109,7 @@ export const TERRAIN_RULES = {
     color: "#8a7d5a",
     icon: "⛰",
     description: "Rolling hills good for both farming and mining",
+    isPlayable: true,
     maxFarms: 2,
     maxMines: 2,
     maxSettlements: 1,
@@ -104,7 +125,12 @@ export const TERRAIN_RULES = {
  */
 export function canAddBuilding(terrain, buildingType, currentUpgrades) {
   const rules = TERRAIN_RULES[terrain];
-  if (!rules) return { allowed: true, reason: "" }; // Unknown terrain = no restrictions
+  if (!rules) return { allowed: true, reason: "" };
+  
+  // Water is never buildable
+  if (!rules.isPlayable) {
+    return { allowed: false, reason: "Water cannot be built upon" };
+  }
   
   const settlements = ["Village", "Town", "City"];
   const farms = ["Farm", "Farm2"];
@@ -114,12 +140,10 @@ export function canAddBuilding(terrain, buildingType, currentUpgrades) {
   if (settlements.includes(buildingType)) {
     const currentSettlement = currentUpgrades.find(u => settlements.includes(u));
     
-    // Check if any settlement allowed
     if (rules.maxSettlements === 0) {
       return { allowed: false, reason: `${rules.name} cannot support settlements` };
     }
     
-    // Check if this specific settlement type is allowed
     if (rules.allowedSettlements && !rules.allowedSettlements.includes(buildingType)) {
       return { 
         allowed: false, 
@@ -127,19 +151,15 @@ export function canAddBuilding(terrain, buildingType, currentUpgrades) {
       };
     }
     
-    // Already has a settlement - check if it's an upgrade path
     if (currentSettlement) {
-      // Allow Village → Town → City upgrades if terrain permits
       const settlementOrder = ["Village", "Town", "City"];
       const currentIndex = settlementOrder.indexOf(currentSettlement);
       const newIndex = settlementOrder.indexOf(buildingType);
       
-      // If trying to downgrade, allow it (for setSettlement function)
       if (newIndex < currentIndex) {
         return { allowed: true, reason: "" };
       }
       
-      // If trying to upgrade, check if target is allowed
       if (newIndex > currentIndex) {
         if (rules.allowedSettlements && !rules.allowedSettlements.includes(buildingType)) {
           return { 
@@ -193,7 +213,7 @@ export function getTerrainInfo(terrain) {
   return TERRAIN_RULES[terrain] || {
     name: "Unknown",
     color: "#888",
-    icon: "❓",
+    icon: "?",
     description: "Unknown terrain type",
   };
 }

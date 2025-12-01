@@ -22,6 +22,7 @@ import GMMissionPanel from "../components/GmMissionPanel";
 import ArmyForm from "../components/ArmyForm";
 import CharacterForm from "../components/CharacterForm";
 import { Mailbox } from "../components/MessageSystem";
+import BackupData from '../components/BackupData';
 import {
   calculateEconomy,
   calculateUpkeeps,
@@ -1207,6 +1208,8 @@ export default function GMPanel() {
           )}
         </div>
       </div>
+      {/* Backup/Restore Tool */}
+      <BackupData />
 
       {/* Tabs */}
       <div
