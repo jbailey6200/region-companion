@@ -40,6 +40,11 @@ import {
   getRandomEventsForFactions,
   formatEventMessage 
 } from "../config/randomEvents";
+import {
+  subscribeToGameState,
+  advanceToNextTurn,
+  resetGame,
+} from "../utils/gameState";
 
 // Faction Summary Card Component
 function FactionCard({ factionId, factionData, regions, armies, agents, courtPositions, onNavigate }) {
@@ -86,7 +91,7 @@ function FactionCard({ factionId, factionData, regions, armies, agents, courtPos
             {faction?.name || `Faction ${factionId}`}
           </h3>
           <span style={{ fontSize: "12px", color: "#a89a7a" }}>
-            {factionRegions.length} regions • {factionArmies.length} armies •{" "}
+            {factionRegions.length} regions - {factionArmies.length} armies -{" "}
             {factionAgents.length} agents
           </span>
         </div>
@@ -735,13 +740,13 @@ function RandomEventsPanel({ factionNames, onSendEvent }) {
           }}
         >
           <h3 style={{ margin: "0 0 12px 0", color: "#b5e8a1" }}>
-            âœ… Events Sent Successfully!
+            Ã¢Å“â€¦ Events Sent Successfully!
           </h3>
           <div style={{ fontSize: "13px" }}>
             {lastSentResults.map((result) => (
               <div key={result.factionId} style={{ marginBottom: "4px" }}>
                 <strong>{factionNames[result.factionId] || `Faction ${result.factionId}`}</strong>
-                {" â†’ "}
+                {" Ã¢â€ â€™ "}
                 {result.success ? (
                   <span style={{ color: "#b5e8a1" }}>
                     {result.event.icon} {result.event.name}
@@ -804,6 +809,11 @@ export default function GMPanel() {
   const [activeTab, setActiveTab] = useState("factions");
   const [role, setRole] = useState(null);
 
+  // Game state
+  const [gameState, setGameState] = useState({ currentTurn: 1 });
+  const [isAdvancingTurn, setIsAdvancingTurn] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
   // Data states
   const [regions, setRegions] = useState([]);
   const [factionData, setFactionData] = useState({});
@@ -832,6 +842,49 @@ export default function GMPanel() {
       setRole(r);
     }
   }, [navigate]);
+
+  // Subscribe to game state
+  useEffect(() => {
+    const unsub = subscribeToGameState((state) => {
+      setGameState(state);
+    });
+    return () => unsub();
+  }, []);
+
+  // Handle advancing turn
+  async function handleAdvanceTurn() {
+    if (isAdvancingTurn) return;
+    
+    if (!window.confirm(`Advance to Turn ${gameState.currentTurn + 1}?\n\nThis will:\n- Reset all movement tracking\n- Reset building limits\n- Allow new actions for all factions`)) {
+      return;
+    }
+    
+    setIsAdvancingTurn(true);
+    try {
+      await advanceToNextTurn();
+    } catch (error) {
+      console.error("Error advancing turn:", error);
+      alert("Failed to advance turn. Please try again.");
+    }
+    setIsAdvancingTurn(false);
+  }
+
+  // Handle game reset
+  async function handleResetGame() {
+    if (!showResetConfirm) {
+      setShowResetConfirm(true);
+      return;
+    }
+    
+    try {
+      await resetGame();
+      setShowResetConfirm(false);
+      alert("Game has been reset to Turn 1!");
+    } catch (error) {
+      console.error("Error resetting game:", error);
+      alert("Failed to reset game. Please try again.");
+    }
+  }
 
   // Load regions
   useEffect(() => {
@@ -1079,6 +1132,80 @@ export default function GMPanel() {
         >
           Logout
         </button>
+      </div>
+
+      {/* Turn Controls */}
+      <div
+        className="card"
+        style={{
+          padding: "16px",
+          marginBottom: "24px",
+          background: "#1a2a1a",
+          border: "2px solid #4a6a4a",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "16px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+          <div>
+            <div style={{ fontSize: "12px", color: "#a89a7a", marginBottom: "4px" }}>
+              Current Turn
+            </div>
+            <div style={{ fontSize: "32px", fontWeight: "bold", color: "#d1b26b" }}>
+              {gameState.currentTurn}
+            </div>
+          </div>
+          {gameState.turnStartedAt && (
+            <div style={{ fontSize: "12px", color: "#888" }}>
+              Started: {gameState.turnStartedAt?.toDate?.()?.toLocaleDateString() || "Unknown"}
+            </div>
+          )}
+        </div>
+        
+        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <button
+            onClick={handleAdvanceTurn}
+            disabled={isAdvancingTurn}
+            className="green"
+            style={{
+              padding: "12px 24px",
+              fontSize: "16px",
+              fontWeight: "bold",
+            }}
+          >
+            {isAdvancingTurn ? "Advancing..." : "Advance to Next Turn"}
+          </button>
+          
+          {showResetConfirm ? (
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <span style={{ color: "#ff6b6b", fontSize: "12px" }}>Are you sure?</span>
+              <button
+                onClick={handleResetGame}
+                className="danger"
+                style={{ padding: "8px 16px" }}
+              >
+                Yes, Reset
+              </button>
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                style={{ padding: "8px 16px" }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              className="danger"
+              style={{ padding: "8px 16px" }}
+            >
+              Reset Game
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

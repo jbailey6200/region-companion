@@ -31,6 +31,15 @@ import {
   AGENT_UPKEEP,
   LEVY_UPKEEP_PER_UNIT,
 } from "../utils/economyCalculations";
+import {
+  subscribeToGameState,
+  getAgentMovesRemaining,
+  trackAgentMovement,
+  trackArmyMovement,
+  spendGold,
+  initializeFactionTurnState,
+} from "../utils/gameState";
+import { getHexDistance } from "../config/hexUtils";
 
 /* -------------------------------------------------------
    TOAST SYSTEM
@@ -135,6 +144,10 @@ export default function Faction() {
   // Mailbox state
   const [messages, setMessages] = useState([]);
 
+  // Game state
+  const [gameState, setGameState] = useState({ currentTurn: 1 });
+  const [turnState, setTurnState] = useState(null);
+
   useEffect(() => {
     const auth = getAuthState();
 
@@ -217,6 +230,31 @@ export default function Faction() {
     return () => unsub();
   }, [id]);
 
+  // Subscribe to game state
+  useEffect(() => {
+    const unsub = subscribeToGameState((state) => {
+      setGameState(state);
+    });
+    return () => unsub();
+  }, []);
+
+  // Subscribe to faction turn state
+  useEffect(() => {
+    const ref = doc(db, "factions", String(id));
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setTurnState(data.turnState || null);
+      }
+    });
+    return () => unsub();
+  }, [id]);
+
+  // Initialize faction turn state if needed
+  useEffect(() => {
+    initializeFactionTurnState(id);
+  }, [id]);
+
   // Get court bonuses for current faction
   const courtBonuses = useMemo(() => {
     return getCourtBonuses(courtPositions, Number(id));
@@ -265,6 +303,7 @@ export default function Faction() {
           patronDeity: data.patronDeity || null,
           crest: data.crest || DEFAULT_CRESTS[String(id)] || null,
           capital: data.capital || null,
+          gold: data.gold || 0,
         });
         setPatronDeity(data.patronDeity || null);
         setEditedFactionName(data.name || "");
@@ -456,6 +495,28 @@ export default function Faction() {
       return;
     }
 
+    // If raising levies (delta > 0), charge 1g per unit
+    if (delta > 0 && !isGM) {
+      const currentGold = factionData?.gold || 0;
+      const cost = delta; // 1g per levy unit
+      
+      if (currentGold < cost) {
+        window.alert(`Not enough gold to raise levy!\n\nCost: ${cost}g\nTreasury: ${currentGold}g`);
+        return;
+      }
+      
+      if (!window.confirm(`Raise ${delta} levy unit(s) for ${cost}g?\n\nTreasury: ${currentGold}g -> ${currentGold - cost}g`)) {
+        return;
+      }
+      
+      // Deduct gold - check result in case of race condition
+      const result = await spendGold(id, cost);
+      if (!result.success) {
+        window.alert(`Not enough gold to raise levy!\n\nCost: ${cost}g\nTreasury: ${result.currentGold}g`);
+        return;
+      }
+    }
+
     const ref = doc(db, "factions", String(id), "armies", armyId);
     await updateDoc(ref, { [field]: next });
   }
@@ -479,6 +540,15 @@ export default function Faction() {
     } catch (error) {
       console.error("Error updating commanders:", error);
       alert("Failed to save commanders. Please try again.");
+    }
+  }
+
+  // Track army movement for turn limits
+  async function handleArmyMove(armyId) {
+    try {
+      await trackArmyMovement(id, armyId);
+    } catch (error) {
+      console.error("Error tracking army movement:", error);
     }
   }
 
@@ -562,6 +632,37 @@ export default function Faction() {
 
   async function updateAgentField(agentId, field, value) {
     if (!canEditAgents) return;
+    
+    // If updating location, check movement limits
+    if (field === "location") {
+      const agent = agents.find(a => a.id === agentId);
+      const oldLocation = agent?.location;
+      
+      // If there's an existing location and we're moving (not just setting initial)
+      if (oldLocation && value !== oldLocation) {
+        const movesRemaining = getAgentMovesRemaining(turnState, agentId);
+        
+        if (movesRemaining <= 0) {
+          alert("This agent has no moves remaining this turn.\n\nAgents can move 2 spaces per turn.");
+          return;
+        }
+        
+        // Check if the move is within range (1 hex at a time)
+        const distance = getHexDistance(oldLocation, value);
+        if (distance > 1) {
+          alert(`Agents can only move 1 hex at a time.\n\nDistance to ${value}: ${distance} hexes`);
+          return;
+        }
+        
+        // Track the movement
+        try {
+          await trackAgentMovement(id, agentId);
+        } catch (error) {
+          console.error("Error tracking agent movement:", error);
+        }
+      }
+    }
+    
     const ref = doc(db, "agents", agentId);
     await updateDoc(ref, { [field]: value });
   }
@@ -822,28 +923,41 @@ export default function Faction() {
               <span>
                 Location:{" "}
                 {canEditAgents ? (
-                  <select
-                    value={agent.location || ""}
-                    onChange={(e) => updateAgentField(agent.id, "location", e.target.value)}
-                    style={{
-                      padding: "2px 6px",
-                      background: "#241b15",
-                      border: "1px solid #5e4934",
-                      borderRadius: 4,
-                      color: "#f4efe4",
-                      fontSize: 13,
-                      maxWidth: 150,
-                    }}
-                  >
-                    <option value="">Unknown</option>
-                    {allRegions
-                      .sort((a, b) => (a.code || "").localeCompare(b.code || ""))
-                      .map((r) => (
-                        <option key={r.id} value={r.code || r.id}>
-                          [{r.code}] {r.name}
-                        </option>
-                      ))}
-                  </select>
+                  <>
+                    <select
+                      value={agent.location || ""}
+                      onChange={(e) => updateAgentField(agent.id, "location", e.target.value)}
+                      disabled={agent.location && getAgentMovesRemaining(turnState, agent.id) <= 0}
+                      style={{
+                        padding: "2px 6px",
+                        background: agent.location && getAgentMovesRemaining(turnState, agent.id) <= 0 ? "#2a1a1a" : "#241b15",
+                        border: agent.location && getAgentMovesRemaining(turnState, agent.id) <= 0 ? "1px solid #5a3a3a" : "1px solid #5e4934",
+                        borderRadius: 4,
+                        color: "#f4efe4",
+                        fontSize: 13,
+                        maxWidth: 150,
+                        opacity: agent.location && getAgentMovesRemaining(turnState, agent.id) <= 0 ? 0.6 : 1,
+                      }}
+                    >
+                      <option value="">Unknown</option>
+                      {allRegions
+                        .sort((a, b) => (a.code || "").localeCompare(b.code || ""))
+                        .map((r) => (
+                          <option key={r.id} value={r.code || r.id}>
+                            [{r.code}] {r.name}
+                          </option>
+                        ))}
+                    </select>
+                    {agent.location && (
+                      <span style={{ 
+                        marginLeft: 6, 
+                        fontSize: 11, 
+                        color: getAgentMovesRemaining(turnState, agent.id) > 0 ? "#b5e8a1" : "#ff6b6b" 
+                      }}>
+                        ({getAgentMovesRemaining(turnState, agent.id)}/2 moves)
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <strong>{agent.location || "Unknown"}</strong>
                 )}
@@ -1108,6 +1222,67 @@ export default function Faction() {
         <button onClick={() => navigate("/")}>Home</button>
       </div>
 
+      {/* TURN COUNTER AND TREASURY */}
+      <div
+        className="card"
+        style={{
+          padding: "12px 16px",
+          marginBottom: "16px",
+          background: "#1a2a1a",
+          border: "1px solid #4a6a4a",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "12px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+          <div>
+            <span style={{ fontSize: "12px", color: "#a89a7a" }}>Turn </span>
+            <span style={{ fontSize: "24px", fontWeight: "bold", color: "#d1b26b" }}>
+              {gameState.currentTurn}
+            </span>
+          </div>
+          <div style={{ 
+            padding: "8px 16px", 
+            background: (factionData?.gold || 0) >= 0 ? "#2a3a2a" : "#3a2a2a",
+            borderRadius: "6px",
+            border: (factionData?.gold || 0) >= 0 ? "1px solid #4a6a4a" : "1px solid #6a4a4a",
+          }}>
+            <span style={{ fontSize: "12px", color: "#a89a7a" }}>Treasury </span>
+            <span style={{ 
+              fontSize: "24px", 
+              fontWeight: "bold", 
+              color: (factionData?.gold || 0) >= 0 ? "#FFD700" : "#ff6b6b" 
+            }}>
+              {factionData?.gold || 0}g
+            </span>
+          </div>
+        </div>
+        
+        <div style={{ display: "flex", alignItems: "center", gap: "20px", fontSize: "13px" }}>
+          <div>
+            <span style={{ color: "#a89a7a" }}>Income: </span>
+            <span style={{ color: "#b5e8a1" }}>+{eco?.goldPerTurn || 0}g</span>
+          </div>
+          <div>
+            <span style={{ color: "#a89a7a" }}>Upkeep: </span>
+            <span style={{ color: "#ff6b6b" }}>-{hsgGoldUpkeep + levyGoldUpkeep + navyGoldUpkeep + totalAgentUpkeep}g</span>
+          </div>
+          <div style={{ 
+            padding: "4px 8px", 
+            background: netGoldPerTurn >= 0 ? "#1a2f1a" : "#2f1a1a",
+            borderRadius: "4px",
+          }}>
+            <span style={{ color: "#a89a7a" }}>Net/Turn: </span>
+            <span style={{ color: netGoldPerTurn >= 0 ? "#b5e8a1" : "#ff6b6b", fontWeight: "bold" }}>
+              {netGoldPerTurn >= 0 ? "+" : ""}{netGoldPerTurn}g
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* SUMMARY CARDS */}
       <div className="summary-row">
         <div className="summary-card">
@@ -1257,6 +1432,8 @@ export default function Faction() {
               patronDeity={patronDeity}
               capital={factionData?.capital}
               onSetCapital={setCapital}
+              turnState={turnState}
+              factionGold={factionData?.gold || 0}
             />
           ))}
         </>
@@ -1328,11 +1505,14 @@ export default function Faction() {
                 allRegions={allRegions}
                 patronDeity={patronDeity}
                 courtBonuses={courtBonuses}
+                turnState={turnState}
+                factionId={Number(id)}
                 onChangeUnit={changeArmyUnit}
                 onChangeLevy={changeArmyLevy}
                 onChangeField={changeArmyField}
                 onDelete={deleteArmy}
                 onUpdateCommanders={updateArmyCommanders}
+                onMove={handleArmyMove}
               />
             ))}
         </>

@@ -6,10 +6,11 @@ import { doc, updateDoc, deleteDoc, collection, onSnapshot } from "firebase/fire
 import { canAddBuilding, getTerrainInfo, TERRAIN_TYPES } from "../config/terrainRules";
 import { BUILDING_RULES } from "../config/buildingRules";
 import { DEITIES } from "../config/religionRules";
+import { canBuildInRegion, spendGold, trackBuildingBuilt } from "../utils/gameState";
 
 const SETTLEMENTS = ["Village", "Town", "City"];
 
-export default function RegionCard({ region, eco, role, myFactionId, patronDeity, capital, onSetCapital }) {
+export default function RegionCard({ region, eco, role, myFactionId, patronDeity, capital, onSetCapital, turnState, factionGold }) {
   const [expanded, setExpanded] = useState(false);
   const [showRequirements, setShowRequirements] = useState(false);
   const [notes, setNotes] = useState(region.notes || "");
@@ -181,7 +182,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
       requirements.reasons.push(`Cost: ${BUILDING_RULES.City.buildCost}g (upgrade)`);
     }
 
-    requirements.tooltip = requirements.reasons.join(" Â· ");
+    requirements.tooltip = requirements.reasons.join(" · ");
     return requirements;
   }
 
@@ -191,6 +192,52 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
 
   async function updateUpgrades(newUps) {
     await updateRegionFields({ upgrades: newUps, disabledUpgrades: [] });
+  }
+
+  // Check if can build in this region this turn
+  const canBuildThisTurn = canBuildInRegion(turnState, region.id);
+  
+  // Check if player can afford the cost
+  function checkGold(cost) {
+    const currentGold = factionGold || 0;
+    if (currentGold < cost && !isGM) {
+      alert(`Not enough gold!\n\nCost: ${cost}g\nTreasury: ${currentGold}g`);
+      return false;
+    }
+    return true;
+  }
+  
+  // Track building and deduct gold BEFORE building - returns true if successful
+  async function trackBuildAndSpend(cost) {
+    
+    if (isGM) {
+      return true;
+    }
+    
+    // First spend the gold - this will fail if not enough
+    const result = await spendGold(myFactionId, cost);
+    
+    if (!result.success) {
+      alert(`Not enough gold!\n\nCost: ${cost}g\nTreasury: ${result.currentGold}g`);
+      return false;
+    }
+    
+    // Then track the building
+    await trackBuildingBuilt(myFactionId, region.id);
+    return true;
+  }
+
+  // Check building limit with fresh state from Firebase
+  async function checkBuildingLimitAsync() {
+    
+    if (isGM) return true;
+    
+    // Use local state first for quick check
+    if (!canBuildThisTurn) {
+      alert("You can only build ONE structure per region per turn.\n\nWait for the next turn to build more.");
+      return false;
+    }
+    return true;
   }
 
   async function toggleSiege() {
@@ -210,6 +257,9 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
       return;
     }
 
+    // Check building limit
+    if (!await checkBuildingLimitAsync()) return;
+
     const reqs = getSettlementRequirements(type);
     if (!reqs.allowed) {
       window.alert(reqs.reasons.join("\n"));
@@ -217,7 +267,12 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
     }
 
     const cost = BUILDING_RULES[type].buildCost;
-    if (!window.confirm(`Build ${type} for ${cost} gold?`)) return;
+    if (!checkGold(cost)) return;
+    if (!window.confirm(`Build ${type} for ${cost} gold?\n\nTreasury: ${factionGold || 0}g -> ${(factionGold || 0) - cost}g`)) return;
+
+    // Track and spend BEFORE building
+    const success = await trackBuildAndSpend(cost);
+    if (!success) return;
 
     newUps.push(type);
     await updateUpgrades(newUps);
@@ -226,6 +281,10 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
   async function addFarm() {
     if (!isOwner) return;
     if (region.underSiege && !isGM) return;
+    
+    // Check building limit
+    if (!await checkBuildingLimitAsync()) return;
+    
     const check = canAddBuilding(terrain, "Farm", upgrades);
     if (!check.allowed) {
       window.alert(check.reason);
@@ -238,14 +297,22 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
     }
     
     const cost = BUILDING_RULES.Farm.buildCost;
-    if (!window.confirm(`Build Farm for ${cost} gold?`)) return;
+    if (!checkGold(cost)) return;
+    if (!window.confirm(`Build Farm for ${cost} gold?\n\nTreasury: ${factionGold || 0}g -> ${(factionGold || 0) - cost}g`)) return;
     
+    // Track and spend BEFORE building
+    const success = await trackBuildAndSpend(cost);
+    if (!success) return;
     await updateUpgrades([...upgrades, "Farm"]);
   }
 
   async function upgradeFarm() {
     if (!isOwner) return;
     if (region.underSiege && !isGM) return;
+    
+    // Check building limit
+    if (!await checkBuildingLimitAsync()) return;
+    
     const farmIdx = upgrades.indexOf("Farm");
     if (farmIdx === -1) {
       window.alert("No Farm to upgrade.");
@@ -253,7 +320,12 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
     }
     
     const cost = BUILDING_RULES.Farm2.buildCost;
-    if (!window.confirm(`Upgrade Farm to Farm2 for ${cost} gold?`)) return;
+    if (!checkGold(cost)) return;
+    if (!window.confirm(`Upgrade Farm to Farm2 for ${cost} gold?\n\nTreasury: ${factionGold || 0}g -> ${(factionGold || 0) - cost}g`)) return;
+    
+    // Track and spend BEFORE building
+    const success = await trackBuildAndSpend(cost);
+    if (!success) return;
     
     const newUps = [...upgrades];
     newUps[farmIdx] = "Farm2";
@@ -279,6 +351,10 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
   async function addMine() {
     if (!isOwner) return;
     if (region.underSiege && !isGM) return;
+    
+    // Check building limit
+    if (!await checkBuildingLimitAsync()) return;
+    
     const check = canAddBuilding(terrain, "Mine", upgrades);
     if (!check.allowed) {
       window.alert(check.reason);
@@ -291,7 +367,12 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
     }
     
     const cost = BUILDING_RULES.Mine.buildCost;
-    if (!window.confirm(`Build Mine for ${cost} gold?`)) return;
+    if (!checkGold(cost)) return;
+    if (!window.confirm(`Build Mine for ${cost} gold?\n\nTreasury: ${factionGold || 0}g -> ${(factionGold || 0) - cost}g`)) return;
+    
+    // Track and spend BEFORE building
+    const success = await trackBuildAndSpend(cost);
+    if (!success) return;
     
     await updateUpgrades([...upgrades, "Mine"]);
   }
@@ -299,6 +380,10 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
   async function upgradeMine() {
     if (!isOwner) return;
     if (region.underSiege && !isGM) return;
+    
+    // Check building limit
+    if (!await checkBuildingLimitAsync()) return;
+    
     const mineIdx = upgrades.indexOf("Mine");
     if (mineIdx === -1) {
       window.alert("No Mine to upgrade.");
@@ -306,7 +391,12 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
     }
     
     const cost = BUILDING_RULES.Mine2.buildCost;
-    if (!window.confirm(`Upgrade Mine to Mine2 for ${cost} gold?`)) return;
+    if (!checkGold(cost)) return;
+    if (!window.confirm(`Upgrade Mine to Mine2 for ${cost} gold?\n\nTreasury: ${factionGold || 0}g -> ${(factionGold || 0) - cost}g`)) return;
+    
+    // Track and spend BEFORE building
+    const success = await trackBuildAndSpend(cost);
+    if (!success) return;
     
     const newUps = [...upgrades];
     newUps[mineIdx] = "Mine2";
@@ -338,7 +428,11 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
     let newUps = [...upgrades];
     if (hasKeep) {
       newUps = newUps.filter((u) => u !== "Keep" && u !== "Castle");
+      await updateUpgrades(newUps);
     } else {
+      // Check building limit (only when adding, not removing)
+      if (!await checkBuildingLimitAsync()) return;
+      
       const check = canAddBuilding(terrain, "Keep", upgrades);
       if (!check.allowed) {
         window.alert(check.reason);
@@ -347,20 +441,30 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
       
       const baseCost = BUILDING_RULES.Keep.buildCost;
       const cost = getModifiedBuildingCost('Keep', baseCost);
+      if (!checkGold(cost)) return;
+      
       const costMessage = cost < baseCost 
-        ? `Build Keep for ${cost} gold? (Normally ${baseCost}g - Umara's blessing)`
-        : `Build Keep for ${cost} gold?`;
+        ? `Build Keep for ${cost} gold? (Normally ${baseCost}g - Umara's blessing)\n\nTreasury: ${factionGold || 0}g -> ${(factionGold || 0) - cost}g`
+        : `Build Keep for ${cost} gold?\n\nTreasury: ${factionGold || 0}g -> ${(factionGold || 0) - cost}g`;
       
       if (!window.confirm(costMessage)) return;
       
+      // Track and spend BEFORE building
+      const success = await trackBuildAndSpend(cost);
+      if (!success) return;
+      
       newUps.push("Keep");
+      await updateUpgrades(newUps);
     }
-    await updateUpgrades(newUps);
   }
 
   async function upgradeToCastle() {
     if (!isOwner) return;
     if (region.underSiege && !isGM) return;
+    
+    // Check building limit
+    if (!await checkBuildingLimitAsync()) return;
+    
     if (!hasKeep) {
       window.alert("Need Keep first.");
       return;
@@ -373,11 +477,17 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
     
     const baseCost = BUILDING_RULES.Castle.buildCost;
     const cost = getModifiedBuildingCost('Castle', baseCost);
+    if (!checkGold(cost)) return;
+    
     const costMessage = cost < baseCost 
-      ? `Upgrade Keep to Castle for ${cost} gold? (Normally ${baseCost}g - Umara's blessing)`
-      : `Upgrade Keep to Castle for ${cost} gold?`;
+      ? `Upgrade Keep to Castle for ${cost} gold? (Normally ${baseCost}g - Umara's blessing)\n\nTreasury: ${factionGold || 0}g -> ${(factionGold || 0) - cost}g`
+      : `Upgrade Keep to Castle for ${cost} gold?\n\nTreasury: ${factionGold || 0}g -> ${(factionGold || 0) - cost}g`;
     
     if (!window.confirm(costMessage)) return;
+    
+    // Track and spend BEFORE building
+    const success = await trackBuildAndSpend(cost);
+    if (!success) return;
     
     await updateUpgrades([...upgrades, "Castle"]);
   }
@@ -428,7 +538,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
   if (mine2Count) summaryParts.push(`${mine2Count} Mine2`);
   if (hasKeep) summaryParts.push("Keep");
   if (hasCastle) summaryParts.push("Castle");
-  const summaryText = summaryParts.length ? summaryParts.join(" Â· ") : "No buildings";
+  const summaryText = summaryParts.length ? summaryParts.join(" · ") : "No buildings";
 
   const villageReqs = getSettlementRequirements("Village");
   const townReqs = getSettlementRequirements("Town");
@@ -477,6 +587,24 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
               Lift Siege
             </button>
           )}
+        </div>
+      )}
+
+      {/* Building Limit Indicator - only show for owners, not GMs */}
+      {isOwner && !isGM && (
+        <div style={{
+          fontSize: "11px",
+          color: canBuildThisTurn ? "#b5e8a1" : "#ff6b6b",
+          marginBottom: "8px",
+          padding: "4px 8px",
+          background: canBuildThisTurn ? "#1a2f1a" : "#2f1a1a",
+          border: canBuildThisTurn ? "1px solid #2a4f2a" : "1px solid #4f2a2a",
+          borderRadius: "4px",
+          display: "inline-block",
+        }}>
+          {canBuildThisTurn 
+            ? "Can build 1 structure this turn" 
+            : "Already built this turn - wait for next turn"}
         </div>
       )}
 

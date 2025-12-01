@@ -3,7 +3,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { HSG_UNITS } from "../config/buildingRules";
 import { DEITIES } from "../config/religionRules";
-import { getAdjacentRegions, ARMY_MOVE_RANGE, ARMY_MOVE_RANGE_KURIMBOR } from "../config/hexUtils";
+import { getAdjacentRegions, getHexDistance, ARMY_MOVE_RANGE, ARMY_MOVE_RANGE_KURIMBOR } from "../config/hexUtils";
+import { getArmyMovesRemaining } from "../utils/gameState";
 
 // Helper function for modified upkeep
 function getModifiedUpkeep(unitType, baseUpkeep, patronDeity) {
@@ -32,11 +33,14 @@ export default function ArmyCard({
   allRegions = [], // NEW: All regions for location dropdown
   patronDeity,
   courtBonuses,
+  turnState, // NEW: Turn tracking state
+  factionId, // NEW: For tracking movements
   onChangeUnit,
   onChangeLevy,
   onChangeField,
   onDelete,
   onUpdateCommanders,
+  onMove, // NEW: Callback for tracking movement
 }) {
   const {
     id,
@@ -118,7 +122,27 @@ export default function ArmyCard({
   const prowessBonus = deity?.bonuses.characterProwess || 0;
   
   // Calculate movement range (Kurimbor deity gives extended range)
-  const moveRange = patronDeity === 'kurimbor' ? ARMY_MOVE_RANGE_KURIMBOR : ARMY_MOVE_RANGE;
+  const hasKurimborBonus = patronDeity === 'kurimbor' && deity?.bonuses.armyMovement;
+  const moveRange = hasKurimborBonus ? ARMY_MOVE_RANGE_KURIMBOR : ARMY_MOVE_RANGE;
+  
+  // Calculate moves remaining this turn
+  const movesRemaining = getArmyMovesRemaining(turnState, id, hasKurimborBonus);
+  const canMove = movesRemaining > 0;
+
+  // Handle location change with movement tracking
+  function handleLocationChange(newLocation) {
+    if (!canMove && location) {
+      alert(`This army has no moves remaining this turn.\n\nMoves per turn: ${hasKurimborBonus ? 2 : 1}\nMoves used: ${hasKurimborBonus ? 2 - movesRemaining : 1 - movesRemaining}`);
+      return;
+    }
+    
+    // If moving from an existing location, track the movement
+    if (location && newLocation !== location && onMove) {
+      onMove(id);
+    }
+    
+    onChangeField(id, "location", newLocation);
+  }
 
   // Calculate unit upkeeps with deity bonuses
   const unitData = [
@@ -210,28 +234,36 @@ export default function ArmyCard({
                 marginBottom: 2,
                 display: "flex",
                 alignItems: "center",
-                gap: 6
+                gap: 6,
+                flexWrap: "wrap"
               }}>
                 <span>Current: [{location}]</span>
                 <span style={{ color: "#7db5d1" }}>
-                  • Move to adjacent ({sortedRegions.filter(r => r.code !== location).length} options)
+                  - Move to adjacent ({sortedRegions.filter(r => r.code !== location).length} options)
+                </span>
+                <span style={{ 
+                  color: canMove ? "#b5e8a1" : "#ff6b6b",
+                  fontWeight: "bold"
+                }}>
+                  - Moves left: {movesRemaining}/{hasKurimborBonus ? 2 : 1}
                 </span>
               </div>
             )}
             <select
               value={location || ""}
-              disabled={!isOwner}
-              onChange={(e) => onChangeField(id, "location", e.target.value)}
+              disabled={!isOwner || (!canMove && location)}
+              onChange={(e) => handleLocationChange(e.target.value)}
               style={{
                 width: "100%",
                 padding: "6px 10px",
                 borderRadius: 6,
-                border: "1px solid #4c3b2a",
-                background: "#1b130d",
+                border: !canMove && location ? "1px solid #5a3a3a" : "1px solid #4c3b2a",
+                background: !canMove && location ? "#2a1a1a" : "#1b130d",
                 color: "#e7dfd2",
                 fontSize: 13,
                 fontFamily: "Georgia, serif",
-                cursor: isOwner ? "pointer" : "not-allowed",
+                cursor: isOwner && (canMove || !location) ? "pointer" : "not-allowed",
+                opacity: !canMove && location ? 0.6 : 1,
               }}
             >
               {!location && <option value="">-- Select Starting Location --</option>}
@@ -247,22 +279,33 @@ export default function ArmyCard({
             </select>
           </div>
 
-          {/* Movement bonus indicator */}
-          {deity?.bonuses.armyMovement && (
-            <div
-              style={{
-                marginTop: 6,
-                padding: "4px 8px",
-                background: "#1a2f1a",
-                borderRadius: 4,
-                border: "1px solid #2a4f2a",
-                fontSize: 12,
-                color: "#b5e8a1",
-              }}
-            >
-               Movement: 2 regions per turn (Kurimbor's blessing)
-            </div>
-          )}
+          {/* Movement indicator */}
+          <div
+            style={{
+              marginTop: 6,
+              padding: "4px 8px",
+              background: hasKurimborBonus ? "#1a2f1a" : "#1a1a2f",
+              borderRadius: 4,
+              border: hasKurimborBonus ? "1px solid #2a4f2a" : "1px solid #2a2a4f",
+              fontSize: 12,
+              color: hasKurimborBonus ? "#b5e8a1" : "#a0a0c0",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span>
+              {hasKurimborBonus 
+                ? "Movement: 2 regions/turn (Kurimbor)" 
+                : "Movement: 1 region/turn"}
+            </span>
+            <span style={{ 
+              color: canMove ? "#b5e8a1" : "#ff6b6b",
+              fontWeight: "bold"
+            }}>
+              {movesRemaining} move{movesRemaining !== 1 ? 's' : ''} remaining
+            </span>
+          </div>
 
           {/* Commanders Display */}
           {commanderObjects.length > 0 && (
