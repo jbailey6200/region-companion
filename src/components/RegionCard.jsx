@@ -7,6 +7,7 @@ import { canAddBuilding, getTerrainInfo, TERRAIN_TYPES } from "../config/terrain
 import { BUILDING_RULES } from "../config/buildingRules";
 import { DEITIES } from "../config/religionRules";
 import { canBuildInRegion, spendGold, trackBuildingBuilt } from "../utils/gameState";
+import InfoButton from "../components/InfoButton";
 
 const SETTLEMENTS = ["Village", "Town", "City"];
 
@@ -176,13 +177,13 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
       }
       
       if (missingReqs.length > 0) {
-        requirements.reasons.unshift(`Need ${missingReqs.join(', ')}`);
+        requirements.reasons.unshift(`Need ${missingReqs.join(', ')}`)
       }
       
       requirements.reasons.push(`Cost: ${BUILDING_RULES.City.buildCost}g (upgrade)`);
     }
 
-    requirements.tooltip = requirements.reasons.join(" · ");
+    requirements.tooltip = requirements.reasons.join(" - ");
     return requirements;
   }
 
@@ -538,7 +539,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
   if (mine2Count) summaryParts.push(`${mine2Count} Mine2`);
   if (hasKeep) summaryParts.push("Keep");
   if (hasCastle) summaryParts.push("Castle");
-  const summaryText = summaryParts.length ? summaryParts.join(" · ") : "No buildings";
+  const summaryText = summaryParts.length ? summaryParts.join(" - ") : "No buildings";
 
   const villageReqs = getSettlementRequirements("Village");
   const townReqs = getSettlementRequirements("Town");
@@ -636,7 +637,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
             >
               {region.code || region.name}
               {capital === region.code && (
-                <span style={{ marginLeft: "6px", color: "#FFD700" }} title="Capital">★</span>
+                <span style={{ marginLeft: "6px", color: "#FFD700" }} title="Capital">*</span>
               )}
             </span>
             
@@ -721,9 +722,18 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                 border: `1.5px solid ${terrainInfo.color}`,
                 color: "#f8f4e6",
               }}
+              onClick={(e) => e.stopPropagation()}
             >
               <span style={{ fontSize: "16px" }}>{terrainInfo.icon}</span>
               <span>{terrainInfo.name}</span>
+              <InfoButton size="small" title="Terrain Types">
+                <p><strong>Plains:</strong> Best for farms (3 max). Any settlement allowed.</p>
+                <p><strong>Mountains:</strong> Best for mines (3 max). Villages only. Limited farming (1 max). Excellent defense.</p>
+                <p><strong>Forest:</strong> Villages & Towns only. Keeps allowed, no Castles. Defensive terrain.</p>
+                <p><strong>Coast:</strong> Naval access. No mines. Trade bonus (+1g for Town/City).</p>
+                <p><strong>River:</strong> Great for farms (3 max). Good mining (2 max). Any settlement.</p>
+                <p><strong>Hills:</strong> Balanced terrain. Good defense. 2 farms, 2 mines max.</p>
+              </InfoButton>
             </span>
 
             {/* GM Siege Toggle Button */}
@@ -748,7 +758,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
           {!expanded && (
             <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#c7bca5" }}>
               {settlement !== "None" ? settlement : "No settlement"}
-              {summaryParts.length > 0 && ` · ${summaryParts.join(" · ")}`}
+              {summaryParts.length > 0 && ` - ${summaryParts.join(" - ")}`}
             </p>
           )}
         </div>
@@ -849,7 +859,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
               }}
               title="Set this region as your capital (permanent)"
             >
-              ★ Set as Capital
+              * Set as Capital
             </button>
           )}
           
@@ -888,7 +898,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
               fontSize: "13px",
               color: "#ff8888"
             }}>
-              ⚠️ This region is under siege. All construction and upgrades are disabled until the siege is lifted.
+              Warning: This region is under siege. All construction and upgrades are disabled until the siege is lifted.
             </div>
           )}
 
@@ -919,8 +929,8 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                   minHeight: "auto"
                 }}
               >
-                <span>ℹ️ Settlement & Upgrade Requirements</span>
-                <span style={{ fontSize: "11px" }}>{showRequirements ? "▲" : "▼"}</span>
+                <span>Info: Settlement & Upgrade Requirements</span>
+                <span style={{ fontSize: "11px" }}>{showRequirements ? "^" : "v"}</span>
               </button>
               
               {showRequirements && (
@@ -945,7 +955,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                         alignItems: "center",
                         gap: "6px"
                       }}>
-                        {villageReqs.allowed ? "✓" : "✗"} Village
+                        {villageReqs.allowed ? "OK" : "X"} Village
                       </div>
                       <div style={{ color: "#888", lineHeight: "1.4" }}>
                         {villageReqs.reasons?.length > 0 
@@ -970,7 +980,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                         alignItems: "center",
                         gap: "6px"
                       }}>
-                        {townReqs.allowed ? "✓" : "✗"} Town
+                        {townReqs.allowed ? "OK" : "X"} Town
                       </div>
                       <div style={{ color: "#888", lineHeight: "1.4" }}>
                         {townReqs.reasons?.length > 0 
@@ -995,7 +1005,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                         alignItems: "center",
                         gap: "6px"
                       }}>
-                        {cityReqs.allowed ? "✓" : "✗"} City
+                        {cityReqs.allowed ? "OK" : "X"} City
                       </div>
                       <div style={{ color: "#888", lineHeight: "1.4" }}>
                         {cityReqs.reasons?.length > 0 
@@ -1019,7 +1029,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                         <div key={i} style={{ color: "#b5e8a1" }}>+ {b}</div>
                       ))}
                       {terrainInfo.penalties?.map((p, i) => (
-                        <div key={i} style={{ color: "#f97373" }}>− {p}</div>
+                        <div key={i} style={{ color: "#f97373" }}>- {p}</div>
                       ))}
                     </div>
                   )}
@@ -1048,7 +1058,15 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                 alignItems: "center",
                 marginBottom: "8px"
               }}>
-                <span style={{ fontSize: "14px", color: "#c7bca5" }}>🌾 Farms</span>
+                <span style={{ fontSize: "14px", color: "#c7bca5", display: "flex", alignItems: "center", gap: "4px" }}>
+                  Farms
+                  <InfoButton size="small" title="Farms">
+                    <p><strong>Manpower:</strong> 2 per farm (3 for Farm II)</p>
+                    <p><strong>Levy Archers:</strong> +20 cap per farm (+40 for Farm II)</p>
+                    <p>Required for settlement upgrades. You need farms before you can build Villages, Towns, or Cities.</p>
+                    <p><strong>Build cost:</strong> {BUILDING_RULES.Farm.buildCost}g (upgrade to II: {BUILDING_RULES.Farm2.buildCost}g)</p>
+                  </InfoButton>
+                </span>
                 <strong style={{ fontSize: "16px" }}>
                   {farmCount + farm2Count} / {terrainInfo.maxFarms}
                 </strong>
@@ -1074,7 +1092,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                       onClick={upgradeFarm}
                       style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
                     >
-                      ↑ Upgrade ({BUILDING_RULES.Farm2.buildCost}g)
+                      Upgrade ({BUILDING_RULES.Farm2.buildCost}g)
                     </button>
                   )}
                   {(farmCount > 0 || farm2Count > 0) && (
@@ -1083,7 +1101,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                       onClick={removeFarm}
                       style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
                     >
-                      −
+                      -
                     </button>
                   )}
                 </div>
@@ -1103,7 +1121,15 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                 alignItems: "center",
                 marginBottom: "8px"
               }}>
-                <span style={{ fontSize: "14px", color: "#c7bca5" }}>⛏️ Mines</span>
+                <span style={{ fontSize: "14px", color: "#c7bca5", display: "flex", alignItems: "center", gap: "4px" }}>
+                  Mines
+                  <InfoButton size="small" title="Mines">
+                    <p><strong>Manpower:</strong> 2 per mine (3 for Mine II)</p>
+                    <p><strong>Income:</strong> +2g/turn per mine (+4g for Mine II)</p>
+                    <p>Required for settlement upgrades. You need mines before you can build Towns or Cities.</p>
+                    <p><strong>Build cost:</strong> {BUILDING_RULES.Mine.buildCost}g (upgrade to II: {BUILDING_RULES.Mine2.buildCost}g)</p>
+                  </InfoButton>
+                </span>
                 <strong style={{ fontSize: "16px" }}>
                   {mineCount + mine2Count} / {terrainInfo.maxMines}
                 </strong>
@@ -1129,7 +1155,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                       onClick={upgradeMine}
                       style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
                     >
-                      ↑ Upgrade ({BUILDING_RULES.Mine2.buildCost}g)
+                      Upgrade ({BUILDING_RULES.Mine2.buildCost}g)
                     </button>
                   )}
                   {(mineCount > 0 || mine2Count > 0) && (
@@ -1138,7 +1164,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                       onClick={removeMine}
                       style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
                     >
-                      −
+                      -
                     </button>
                   )}
                 </div>
@@ -1158,7 +1184,15 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                 alignItems: "center",
                 marginBottom: "8px"
               }}>
-                <span style={{ fontSize: "14px", color: "#c7bca5" }}>🏰 Fortification</span>
+                <span style={{ fontSize: "14px", color: "#c7bca5", display: "flex", alignItems: "center", gap: "4px" }}>
+                  Fortification
+                  <InfoButton size="small" title="Fortifications">
+                    <p><strong>Keep:</strong> +150 HSG capacity. Costs {BUILDING_RULES.Keep.buildCost}g to build, 5g/turn upkeep.</p>
+                    <p><strong>Castle:</strong> +250 HSG capacity. Costs {BUILDING_RULES.Castle.buildCost}g to upgrade from Keep, 10g/turn upkeep.</p>
+                    <p>Fortifications greatly increase your military capacity and provide defensive bonuses in battle.</p>
+                    <p><strong>Manpower:</strong> Keep uses 2, Castle uses 4.</p>
+                  </InfoButton>
+                </span>
                 <strong style={{ fontSize: "16px" }}>
                   {hasCastle ? "Castle" : hasKeep ? "Keep" : "None"}
                 </strong>
@@ -1188,7 +1222,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                         onClick={upgradeToCastle}
                         style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
                       >
-                        ↑ Castle ({castleCost !== castleBaseCost ? (
+                        Upgrade ({castleCost !== castleBaseCost ? (
                           <><s style={{ opacity: 0.5 }}>{castleBaseCost}</s> <span style={{ color: "#b5e8a1" }}>{castleCost}</span></>
                         ) : castleBaseCost}g)
                       </button>
@@ -1197,7 +1231,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                         onClick={toggleKeep}
                         style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
                       >
-                        −
+                        -
                       </button>
                     </>
                   )}
@@ -1207,7 +1241,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                       onClick={removeCastle}
                       style={{ margin: 0, padding: "4px 8px", minHeight: "26px", fontSize: "12px" }}
                     >
-                      − Remove
+                      - Remove
                     </button>
                   )}
                 </div>
@@ -1229,7 +1263,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
               alignItems: "center",
               marginBottom: "8px"
             }}>
-              <span style={{ fontSize: "14px", color: "#c7bca5" }}>📝 Notes</span>
+              <span style={{ fontSize: "14px", color: "#c7bca5" }}>Notes</span>
               {isOwner && (
                 <button 
                   onClick={saveNotes} 
@@ -1310,7 +1344,7 @@ export default function RegionCard({ region, eco, role, myFactionId, patronDeity
                     borderColor: underSiege ? "#3a6a3a" : "#6a3a3a"
                   }}
                 >
-                  {underSiege ? "✓ Lift Siege" : "⚔ Siege"}
+                  {underSiege ? "OK Lift Siege" : "! Siege"}
                 </button>
                 <button
                   onClick={deleteRegion}
