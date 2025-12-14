@@ -19,12 +19,13 @@ function getModifiedUpkeep(unitType, baseUpkeep, patronDeity) {
     case 'mountedKnights':
       return deity.bonuses.mountedKnightUpkeep ?? baseUpkeep;
     case 'lightHorse':
-      return baseUpkeep; // No deity modifies light horse
+    case 'menAtArms':
+    case 'crossbowmen':
+    case 'pikemen':
     default:
       return baseUpkeep;
   }
 }
-
 export default function ArmyCard({
   army,
   isOwner,
@@ -50,6 +51,9 @@ export default function ArmyCard({
     dismountedKnights = 0,
     mountedKnights = 0,
     lightHorse = 0,
+    menAtArms = 0,
+    crossbowmen = 0,
+    pikemen = 0,
     levyInfantry = 0,
     levyArchers = 0,
     commanders = [],
@@ -75,7 +79,7 @@ export default function ArmyCard({
     setSelectedCommanders(commanders || []);
   }, [commanders]);
 
-  const hsgTotals = huscarls + dismountedKnights + mountedKnights + lightHorse;
+  const hsgTotals = huscarls + dismountedKnights + mountedKnights + lightHorse + menAtArms + crossbowmen + pikemen;
 
   function toggleCommander(charId) {
     let newCommanders = [...selectedCommanders];
@@ -169,6 +173,24 @@ export default function ArmyCard({
       label: "Light Horse", 
       baseUpkeep: 2,
       count: lightHorse
+    },
+    { 
+      key: "menAtArms", 
+      label: "Men at Arms", 
+      baseUpkeep: 2,
+      count: menAtArms
+    },
+    { 
+      key: "crossbowmen", 
+      label: "Crossbowmen", 
+      baseUpkeep: 1,
+      count: crossbowmen
+    },
+    { 
+      key: "pikemen", 
+      label: "Pikemen", 
+      baseUpkeep: 3,
+      count: pikemen
     },
   ].map(u => ({
     ...u,

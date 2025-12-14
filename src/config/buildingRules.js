@@ -82,6 +82,9 @@ export const HSG_UNITS = [
   { key: "dismountedKnights", label: "Dismounted Knights", upkeep: 3 },
   { key: "mountedKnights", label: "Mounted Knights", upkeep: 4 },
   { key: "lightHorse", label: "Light Horse", upkeep: 2 },
+  { key: "menAtArms", label: "Men at Arms", upkeep: 2 },
+  { key: "crossbowmen", label: "Crossbowmen", upkeep: 1 },
+  { key: "pikemen", label: "Pikemen", upkeep: 3 },
 ];
 
 export const NAVY_UNITS = [{ key: "warships", label: "Warships", upkeep: 3 }];

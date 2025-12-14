@@ -433,6 +433,9 @@ export default function Faction() {
       dismountedKnights: 0,
       mountedKnights: 0,
       lightHorse: 0,
+      menAtArms: 0,
+      crossbowmen: 0,
+      pikemen: 0,
       levyInfantry: 0,
       levyArchers: 0,
       commanders: [],
@@ -750,7 +753,7 @@ export default function Faction() {
   const hsgUsed = useMemo(() => {
     return armies.reduce((sum, a) => {
       if (a.deleted) return sum;
-      return sum + (a.huscarls || 0) + (a.dismountedKnights || 0) + (a.mountedKnights || 0) + (a.lightHorse || 0);
+      return sum + (a.huscarls || 0) + (a.dismountedKnights || 0) + (a.mountedKnights || 0) + (a.lightHorse || 0) + (a.menAtArms || 0) + (a.crossbowmen || 0) + (a.pikemen || 0);
     }, 0);
   }, [armies]);
 
@@ -769,7 +772,10 @@ export default function Faction() {
         (a.huscarls || 0) * getModifiedUpkeep("huscarls", 2, patronDeity) +
         (a.dismountedKnights || 0) * getModifiedUpkeep("dismountedKnights", 3, patronDeity) +
         (a.mountedKnights || 0) * getModifiedUpkeep("mountedKnights", 4, patronDeity) +
-        (a.lightHorse || 0) * 2
+        (a.lightHorse || 0) * 2 +
+        (a.menAtArms || 0) * 2 +
+        (a.crossbowmen || 0) * 1 +
+        (a.pikemen || 0) * 3
       );
     }, 0);
   }, [armies, patronDeity]);

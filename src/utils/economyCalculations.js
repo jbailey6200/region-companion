@@ -22,6 +22,9 @@ export function getModifiedUpkeep(unitType, baseUpkeep, patronDeity) {
       return deity.bonuses.warshipUpkeep ?? baseUpkeep;
     case "agitator":
       return deity.bonuses.agitatorUpkeep ?? baseUpkeep;
+    case "menAtArms":
+    case "crossbowmen":
+    case "pikemen":
     case "lightHorse":
     default:
       return baseUpkeep;
@@ -150,11 +153,6 @@ export function calculateEconomy(regions, patronDeity = null) {
       regionMineEq += (rule.mineEquivalent || 0) * count;
       regionLevyInf += (rule.levyInf || 0) * count;
       regionLevyArch += levyArch * count;
-
-      if (name === "Town") townCountTotal += count;
-      if (name === "City") cityCountTotal += count;
-      if (name === "Village") villageCountTotal += count;
-      if (name === "Mine" || name === "Mine2") totalMineCount += count;
     });
 
     // Terrain bonuses from deity
@@ -247,6 +245,9 @@ export function calculateUpkeeps(armies, factionData, agents, patronDeity) {
     hsgUpkeep += (army.dismountedKnights || 0) * dkUp;
     hsgUpkeep += (army.mountedKnights || 0) * mkUp;
     hsgUpkeep += (army.lightHorse || 0) * 2;
+    hsgUpkeep += (army.menAtArms || 0) * 2;
+    hsgUpkeep += (army.crossbowmen || 0) * 1;
+    hsgUpkeep += (army.pikemen || 0) * 3;
 
     levyUpkeep += ((army.levyInfantry || 0) + (army.levyArchers || 0)) * 0.25;
   });
@@ -284,7 +285,10 @@ export function calculateHSGUsed(armies) {
       (a.huscarls || 0) +
       (a.dismountedKnights || 0) +
       (a.mountedKnights || 0) +
-      (a.lightHorse || 0)
+      (a.lightHorse || 0) +
+      (a.menAtArms || 0) +
+      (a.crossbowmen || 0) +
+      (a.pikemen || 0)
     );
   }, 0);
 }

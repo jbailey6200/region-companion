@@ -10,6 +10,9 @@ export default function ArmyForm({ regions, onSubmit, onCancel }) {
     dismountedKnights: 0,
     mountedKnights: 0,
     lightHorse: 0,
+    menAtArms: 0,
+    crossbowmen: 0,
+    pikemen: 0,
     levyInfantry: 0,
     levyArchers: 0,
   });
@@ -24,6 +27,9 @@ export default function ArmyForm({ regions, onSubmit, onCancel }) {
       dismountedKnights: 0,
       mountedKnights: 0,
       lightHorse: 0,
+      menAtArms: 0,
+      crossbowmen: 0,
+      pikemen: 0,
       levyInfantry: 0,
       levyArchers: 0,
     });
@@ -37,6 +43,9 @@ export default function ArmyForm({ regions, onSubmit, onCancel }) {
       dismountedKnights: 0,
       mountedKnights: 0,
       lightHorse: 0,
+      menAtArms: 0,
+      crossbowmen: 0,
+      pikemen: 0,
       levyInfantry: 0,
       levyArchers: 0,
     });
