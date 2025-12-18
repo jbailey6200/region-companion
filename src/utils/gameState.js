@@ -11,6 +11,7 @@ import {
   writeBatch,
   onSnapshot,
   serverTimestamp,
+  addDoc,
 } from "firebase/firestore";
 import { calculateEconomy, calculateUpkeeps } from "./economyCalculations";
 import { getCourtBonuses } from "../config/courtPositions";
@@ -316,4 +317,87 @@ export function getAgentMovesRemaining(turnState, agentId) {
   const movedThisTurn = agentMovements[agentId] || 0;
   
   return Math.max(0, maxMoves - movedThisTurn);
+}
+
+/**
+ * Send gold to another faction (creates escrow message)
+ * Gold is deducted immediately from sender, recipient must claim
+ */
+export async function sendGoldTransfer(fromFactionId, toFactionId, amount, senderName) {
+  if (amount <= 0) {
+    return { success: false, error: "Amount must be positive" };
+  }
+  
+  if (fromFactionId === toFactionId) {
+    return { success: false, error: "Cannot send gold to yourself" };
+  }
+  
+  const fromRef = doc(db, "factions", String(fromFactionId));
+  const fromSnap = await getDoc(fromRef);
+  
+  if (!fromSnap.exists()) {
+    return { success: false, error: "Sender faction not found" };
+  }
+  
+  const currentGold = fromSnap.data().gold || 0;
+  
+  if (currentGold < amount) {
+    return { success: false, error: "Insufficient gold", currentGold };
+  }
+  
+  // Deduct from sender
+  await updateDoc(fromRef, { gold: currentGold - amount });
+  
+  // Create gold transfer message
+  const messagesRef = collection(db, "messages");
+  await addDoc(messagesRef, {
+    type: "gold_transfer",
+    fromFactionId: Number(fromFactionId),
+    fromFactionName: senderName,
+    toFactionId: Number(toFactionId),
+    goldAmount: amount,
+    claimed: false,
+    read: false,
+    createdAt: serverTimestamp(),
+  });
+  
+  return { success: true, newGold: currentGold - amount };
+}
+
+/**
+ * Claim gold from a transfer message
+ */
+export async function claimGoldTransfer(messageId, factionId) {
+  const messageRef = doc(db, "messages", messageId);
+  const messageSnap = await getDoc(messageRef);
+  
+  if (!messageSnap.exists()) {
+    return { success: false, error: "Message not found" };
+  }
+  
+  const messageData = messageSnap.data();
+  
+  if (messageData.type !== "gold_transfer") {
+    return { success: false, error: "Not a gold transfer" };
+  }
+  
+  if (messageData.toFactionId !== Number(factionId)) {
+    return { success: false, error: "This transfer is not for you" };
+  }
+  
+  if (messageData.claimed) {
+    return { success: false, error: "Already claimed" };
+  }
+  
+  // Add gold to recipient
+  const factionRef = doc(db, "factions", String(factionId));
+  const factionSnap = await getDoc(factionRef);
+  const currentGold = factionSnap.exists() ? (factionSnap.data().gold || 0) : 0;
+  
+  await updateDoc(factionRef, { gold: currentGold + messageData.goldAmount });
+  
+  // Mark as claimed
+  await updateDoc(messageRef, { claimed: true, claimedAt: serverTimestamp() });
+  
+  return { success: true, amount: messageData.goldAmount, newGold: currentGold + messageData.goldAmount };
 }

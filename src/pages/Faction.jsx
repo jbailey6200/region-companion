@@ -19,7 +19,7 @@ import CharacterCard from "../components/CharacterCard";
 import CharacterForm from "../components/CharacterForm";
 import Court from "../components/Court";
 import AgentMissions from "../components/AgentMissions";
-import { Mailbox } from "../components/MessageSystem";
+import { Mailbox, SendGoldModal } from "../components/MessageSystem";
 import InfoButton from "../components/InfoButton";
 import { getAuthState } from "../utils/auth";
 import { BUILDING_RULES } from "../config/buildingRules";
@@ -39,6 +39,8 @@ import {
   trackArmyMovement,
   spendGold,
   initializeFactionTurnState,
+  sendGoldTransfer,
+  claimGoldTransfer,
 } from "../utils/gameState";
 import { getHexDistance } from "../config/hexUtils";
 
@@ -148,6 +150,9 @@ export default function Faction() {
   // Game state
   const [gameState, setGameState] = useState({ currentTurn: 1 });
   const [turnState, setTurnState] = useState(null);
+
+  // Send Gold modal state
+  const [sendGoldOpen, setSendGoldOpen] = useState(false);
 
   useEffect(() => {
     const auth = getAuthState();
@@ -408,11 +413,44 @@ export default function Faction() {
     await deleteDoc(doc(db, "messages", messageId));
   }
 
+  // Gold transfer functions
+  async function handleSendGold({ to, amount }) {
+    const myFactionName = factionData?.name || `Faction ${id}`;
+    const result = await sendGoldTransfer(Number(id), to, amount, myFactionName);
+    
+    if (result.success) {
+      show("Gold Sent", `${amount}g has been sent. The recipient must claim it from their mailbox.`);
+    } else {
+      show("Transfer Failed", result.error || "Could not send gold.");
+    }
+  }
+
+  async function handleClaimGold(messageId) {
+    const result = await claimGoldTransfer(messageId, Number(id));
+    
+    if (result.success) {
+      show("Gold Claimed", `${result.amount}g has been added to your treasury!`);
+    } else {
+      show("Claim Failed", result.error || "Could not claim gold.");
+    }
+  }
+
   const unreadCount = messages.filter((m) => !m.read).length;
 
   // Build recipient list for mailbox
   const messageRecipients = useMemo(() => {
     const recipients = { gm: "Game Master" };
+    Object.entries(allFactionNames).forEach(([fId, name]) => {
+      if (fId !== String(id) && fId !== "neutral") {
+        recipients[fId] = name;
+      }
+    });
+    return recipients;
+  }, [allFactionNames, id]);
+
+  // Build recipient list for gold transfers (factions only, no GM)
+  const goldRecipients = useMemo(() => {
+    const recipients = {};
     Object.entries(allFactionNames).forEach(([fId, name]) => {
       if (fId !== String(id) && fId !== "neutral") {
         recipients[fId] = name;
@@ -1263,20 +1301,38 @@ export default function Faction() {
             background: (factionData?.gold || 0) >= 0 ? "#2a3a2a" : "#3a2a2a",
             borderRadius: "6px",
             border: (factionData?.gold || 0) >= 0 ? "1px solid #4a6a4a" : "1px solid #6a4a4a",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
           }}>
-            <span style={{ fontSize: "12px", color: "#a89a7a" }}>Treasury </span>
-            <span style={{ 
-              fontSize: "24px", 
-              fontWeight: "bold", 
-              color: (factionData?.gold || 0) >= 0 ? "#FFD700" : "#ff6b6b" 
-            }}>
-              {factionData?.gold || 0}g
-            </span>
-            <InfoButton title="Treasury" size="small">
-              <p>Your current gold reserves. Gold is added/subtracted each turn based on your net income.</p>
-              <p><strong>Uses:</strong> Raising levies, building construction, and other actions.</p>
-              <p>Your Treasury CANNOT go negative</p>
-            </InfoButton>
+            <div>
+              <span style={{ fontSize: "12px", color: "#a89a7a" }}>Treasury </span>
+              <span style={{ 
+                fontSize: "24px", 
+                fontWeight: "bold", 
+                color: (factionData?.gold || 0) >= 0 ? "#FFD700" : "#ff6b6b" 
+              }}>
+                {factionData?.gold || 0}g
+              </span>
+              <InfoButton title="Treasury" size="small">
+                <p>Your current gold reserves. Gold is added/subtracted each turn based on your net income.</p>
+                <p><strong>Uses:</strong> Raising levies, building construction, and other actions.</p>
+                <p>Your Treasury CANNOT go negative</p>
+              </InfoButton>
+            </div>
+            {isOwnerView && (factionData?.gold || 0) > 0 && Object.keys(goldRecipients).length > 0 && (
+              <button 
+                onClick={() => setSendGoldOpen(true)}
+                className="small"
+                style={{ 
+                  background: "#2a2a1a",
+                  borderColor: "#5a5a34",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Send Gold
+              </button>
+            )}
           </div>
         </div>
         
@@ -1738,7 +1794,7 @@ export default function Faction() {
         </>
       )}
 
-      {/* MAILBOX TAB - Now using shared Mailbox component */}
+      {/* MAILBOX TAB */}
       {activeTab === "mailbox" && (
         <Mailbox
           messages={messages}
@@ -1748,11 +1804,22 @@ export default function Faction() {
           onSend={sendMessage}
           onMarkRead={markMessageRead}
           onDelete={deleteMessage}
+          onClaimGold={handleClaimGold}
           maxLength={250}
           isGM={false}
           canCompose={isOwnerView}
         />
       )}
+
+      {/* Send Gold Modal - outside tabs so it works from treasury button */}
+      <SendGoldModal
+        isOpen={sendGoldOpen}
+        onClose={() => setSendGoldOpen(false)}
+        onSend={handleSendGold}
+        recipients={goldRecipients}
+        currentGold={factionData?.gold || 0}
+        senderName={factionData?.name || `Faction ${id}`}
+      />
 
       {/* CHARACTERS TAB */}
       {activeTab === "characters" && renderCharactersTab()}
